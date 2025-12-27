@@ -160,13 +160,3 @@ func parseInt(s string, fallback int) int {
 	}
 	return val
 }
-
-// SQL returns "LIMIT ? OFFSET ?" string and args
-func (p Pagination) SQL() (string, []any) {
-	return "LIMIT ? OFFSET ?", []any{p.Limit, p.Offset()}
-}
-
-// SQLString returns full SQL clause (untuk logging)
-func (p Pagination) SQLString() string {
-	return fmt.Sprintf("LIMIT %d OFFSET %d", p.Limit, p.Offset())
-}
