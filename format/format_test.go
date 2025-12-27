@@ -56,7 +56,7 @@ func TestFormatBRINorek(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, FormatBRINorek(tt.input))
+			assert.Equal(t, tt.expected, BRINorek(tt.input))
 		})
 	}
 }
@@ -82,7 +82,7 @@ func TestFormatRupiah(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(strconv.FormatFloat(tt.input, 'f', 2, 64), func(t *testing.T) {
-			assert.Equal(t, tt.expected, FormatRupiah(tt.input))
+			assert.Equal(t, tt.expected, Rupiah(tt.input))
 		})
 	}
 }

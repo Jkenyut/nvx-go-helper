@@ -4,9 +4,10 @@
 // No external dependencies → smaller binary, faster build, zero supply-chain risk.
 //
 // Contains:
-//   - Time: WIB ↔ UTC conversion
-//   - String: Title case, unique append
-//   - Number: Format Rupiah & BRI account
+//   - String helpers: Title case, unique append
+//   - Number formatting: Indonesian Rupiah
+//   - Bank formatting: BRI account number
+//   - Safe type-to-string conversion for logging, cache keys, filenames, etc.
 package format
 
 import (
@@ -22,8 +23,14 @@ import (
 // STRING HELPERS
 // =============================================================================
 
-// Title converts string to Title Case using simple built-in logic
-// (good enough for 99% cases: names, roles, categories)
+// Title converts a string to Title Case using simple ASCII-based logic.
+// It uppercases the letter following spaces, hyphens, or underscores.
+// Suitable for names, roles, categories, and most UI text (99% of cases).
+// Returns empty string if input is empty.
+//
+// Example:
+//
+//	Title("john doe-jr") // "John Doe-Jr"
 func Title(s string) string {
 	if s == "" {
 		return ""
@@ -46,13 +53,17 @@ func Title(s string) string {
 	return result.String()
 }
 
-// Simple ASCII-only upper/lower (fast & built-in)
+// toUpper converts an ASCII lowercase letter to uppercase.
+// Non-letter runes are returned unchanged. Fast and zero-allocation.
 func toUpper(r rune) rune {
 	if r >= 'a' && r <= 'z' {
 		return r - 32
 	}
 	return r
 }
+
+// toLower converts an ASCII uppercase letter to lowercase.
+// Non-letter runes are returned unchanged. Fast and zero-allocation.
 func toLower(r rune) rune {
 	if r >= 'A' && r <= 'Z' {
 		return r + 32
@@ -60,7 +71,15 @@ func toLower(r rune) rune {
 	return r
 }
 
-// AddStringUnique appends value only if not exists (case-insensitive)
+// AddStringUnique appends a value to a string slice only if it does not already exist
+// (case-insensitive comparison). The value is normalized with Title() before insertion.
+// Empty (after trim) values are ignored. The slice is modified in place.
+//
+// Example:
+//
+//	items := []string{"Admin", "User"}
+//	AddStringUnique("admin", &items)      // no change
+//	AddStringUnique("moderator", &items) // items becomes ["Admin", "User", "Moderator"]
 func AddStringUnique(value string, slice *[]string) {
 	if strings.TrimSpace(value) == "" {
 		return
@@ -79,14 +98,27 @@ func AddStringUnique(value string, slice *[]string) {
 // NUMBER & BANK HELPERS
 // =============================================================================
 
-// FormatRupiah formats number to Indonesian Rupiah: 1.234.567,89
-// Indonesia uses dot (.) as thousand separator and comma (,) as decimal
-func FormatRupiah(amount float64) string {
+// Rupiah formats a float64 amount as Indonesian Rupiah string.
+// Uses dot (.) as thousand separator and comma (,) as decimal separator.
+// Always shows exactly 2 decimal places.
+//
+// Example:
+//
+//	Rupiah(1234567.89) // "1.234.567,89"
+//	Rupiah(-5000)      // "-5.000,00"
+func Rupiah(amount float64) string {
 	return formatNumber(amount, 2, ",", ".")
 }
 
-// FormatBRINorek formats BRI account number: 1234-56-789012-34-5
-func FormatBRINorek(norek string) string {
+// BRINorek formats a BRI account number into the standard pattern: XXXX-XX-XXXXXX-XX-X
+// All existing hyphens and spaces are removed first.
+// If input is shorter than 15 digits, returns empty string.
+// If longer, only the first 15 digits are used.
+//
+// Example:
+//
+//	BRINorek("123456789012345") // "1234-56-789012-34-5"
+func BRINorek(norek string) string {
 	norek = strings.ReplaceAll(norek, "-", "")
 	norek = strings.ReplaceAll(norek, " ", "")
 	if len(norek) < 15 {
@@ -99,7 +131,8 @@ func FormatBRINorek(norek string) string {
 		norek[:4], norek[4:6], norek[6:12], norek[12:14], norek[14:])
 }
 
-// formatNumber is generic formatter (decimal places, decSep, thouSep)
+// formatNumber is a generic number formatter used internally by Rupiah.
+// Formats num with given decimal places, decimal separator, and thousand separator.
 func formatNumber(num float64, decimals int, decSep, thouSep string) string {
 	isNegative := num < 0
 	if isNegative {
@@ -134,14 +167,28 @@ func formatNumber(num float64, decimals int, decSep, thouSep string) string {
 	return result
 }
 
-// Package converter provides safe, zero-allocation when possible, and battle-tested
-// conversion utilities from any type to string.
+// =============================================================================
+// TYPE CONVERSION UTILITIES
+// =============================================================================
+
+// ToString safely converts any value to its string representation.
+// Never panics. Supports built-in types, time.Time, fmt.Stringer, slices, maps, structs, etc.
+// Used for logging, JSON responses, cache keys, Redis keys, filenames, etc.
 //
-// Used in logging, response formatting, cache key, Redis key, file name, etc.
+// Priority order:
+//   - string / []byte → direct conversion
+//   - numeric types → decimal formatting
+//   - bool → "true"/"false"
+//   - time.Time → RFC3339 (empty if zero)
+//   - fmt.Stringer → .String()
+//   - nil / nil pointer → ""
+//   - other → JSON marshal → fallback to fmt.Sprintf("%v")
 //
-// ToString converts ANY type → string
-// Support: string, int, float, bool, time.Time, []byte, struct, map, nil, dll
-// Never panic, always return string
+// Example:
+//
+//	ToString(123)                     // "123"
+//	ToString(time.Now())              // "2006-01-02T15:04:05Z07:00"
+//	ToString(map[string]int{"a":1})   // `{"a":1}`
 func ToString(v any) string {
 	if v == nil {
 		return ""
@@ -183,8 +230,15 @@ func ToString(v any) string {
 	}
 }
 
-// ToSafeString – untuk Redis key, file name, log context
-// Menghilangkan spasi, symbol berbahaya, dll
+// ToSafeString converts any value to string and sanitizes it for use in
+// filenames, Redis keys, log context, URLs, etc.
+// Replaces spaces and dangerous characters (/ \ :) with underscores.
+// Returns "empty" if the result is blank after sanitization.
+//
+// Example:
+//
+//	ToSafeString("user/name:123") // "user_name_123"
+//	ToSafeString("")              // "empty"
 func ToSafeString(v any) string {
 	s := ToString(v)
 	s = strings.TrimSpace(s)
