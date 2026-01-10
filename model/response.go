@@ -26,15 +26,10 @@ package response
 import (
 	"context"
 
+	"github.com/Jkenyut/nvx-go-helper/activity"
 	"github.com/Jkenyut/nvx-go-helper/crypto"
 )
 
-// contextKey is a private type to avoid key collisions in context
-type contextKey string
-
-const requestIDKey contextKey = "request_id"
-
-// Meta contains standardized response metadata.
 type Meta struct {
 	Success    bool   `json:"success"`     // true for 2xx, false for 4xx/5xx
 	Message    string `json:"message"`     // human-readable, lowercase
@@ -42,36 +37,18 @@ type Meta struct {
 	RequestID  string `json:"request_id"`  // correlation ID for tracing
 }
 
-// Response is the standard API response envelope.
 type Response struct {
 	Meta Meta `json:"meta"`           // always present
 	Data any  `json:"data,omitempty"` // omitted when nil
-}
-
-// requestIDFromContext extracts request_id from context if present.
-// Falls back to empty string if not found.
-func requestIDFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	if id, ok := ctx.Value(requestIDKey).(string); ok && id != "" {
-		return id
-	}
-	return ""
-}
-
-// generateRequestID creates a new UUID v4 as fallback.
-func generateRequestID() string {
-	return crypto.V4()
 }
 
 // NewMeta builds metadata with correct request_id precedence:
 // 1. From context (middleware/header)
 // 2. Generate new UUID v4
 func NewMeta(ctx context.Context, success bool, message string, status int) Meta {
-	reqID := requestIDFromContext(ctx)
+	reqID, _ := activity.GetRequestID(ctx)
 	if reqID == "" {
-		reqID = generateRequestID()
+		reqID = crypto.V4()
 	}
 
 	return Meta{

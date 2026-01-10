@@ -1,25 +1,27 @@
 # NVX Go Helper
 
-**nvx-go-helper** adalah koleksi utility functions _production-grade_ untuk mempercepat pengembangan backend service di lingkungan Go (Golang). Library ini dirancang untuk:
-- **Zero dependencies** (sebisa mungkin).
-- **High performance** (optimized for speed & allocs).
-- **Opinionated** tapi fleksibel (standar enterprise Indonesia 2025).
+**nvx-go-helper** is a collection of **production-grade** utility functions designed to accelerate backend service development in Go (Golang). This library is built according to 2025 enterprise standards.
 
-## 📦 Instalasi
+**Key Design Principles:**
+- **Zero dependencies** (wherever possible).
+- **High performance** (optimized for speed & zero allocations).
+- **Opinionated yet flexible** (following standard best practices).
+
+## 📦 Installation
 
 ```bash
 go get github.com/Jkenyut/nvx-go-helper
 ```
 
-## ✨ Fitur Utama
+## ✨ Core Features
 
 ### 1. Crypto (`/crypto`)
-Enkripsi AES-256-GCM yang sangat cepat dan aman. Wrapper sederhana di atas `crypto/cipher` standar.
+Ultra-fast and secure AES-256-GCM encryption. A simple, misuse-resistant wrapper around the standard `crypto/cipher`.
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/crypto"
 
-// Init (panggil sekali saat startup)
+// Init (call once at startup)
 enc, err := crypto.NewAESGCM("32-byte-secret-key-must-be-exact!")
 
 // Encrypt Any Struct -> URL specific Base64
@@ -31,7 +33,7 @@ err := enc.Decrypt(token, &data)
 ```
 
 ### 2. Format (`/format`)
-Helper untuk string, angka, dan format bank lokal (Indonesia).
+Helpers for string manipulation, number formatting, and local banking standards (Indonesia).
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/format"
@@ -39,18 +41,18 @@ import "github.com/Jkenyut/nvx-go-helper/format"
 // Format Rupiah
 fmt.Println(format.Rupiah(150000)) // "150.000,00"
 
-// Format Norek BRI
+// Format BRI Account Number
 fmt.Println(format.BRINorek("123456789012345")) // "1234-56-789012-34-5"
 
 // Title Case (Smart)
 fmt.Println(format.Title("admin-role")) // "Admin-Role"
 
-// Safe String (untuk filename/key)
+// Safe String (for filename/key)
 fmt.Println(format.ToSafeString("User Name / 123")) // "User_Name___123"
 ```
 
 ### 3. Response (`/model`)
-Standarisasi respons JSON API (`{ meta, data }`). Otomatis menangani `request_id` dari context.
+Standardized JSON API response format (`{ meta, data }`). Automatically handles `request_id` context propagation.
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/model"
@@ -69,15 +71,15 @@ func GetUser(c *gin.Context) {
 ```
 
 ### 4. Pagination (`/pagination`)
-Helper untuk menangani pagination query param dan link header (RFC 5988).
+Robust helper for handling pagination query parameters and generating Link headers (RFC 5988).
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/pagination"
 
-// Parse dari query param
+// Parse from query param
 p := pagination.New("1", "10", 100) // page, limit, total
 
-// Pakai di query DB
+// Use in DB query
 db.Limit(p.Limit).Offset(p.Offset()).Find(&users)
 
 // Generate response info
@@ -87,16 +89,16 @@ c.JSON(200, gin.H{
 })
 ```
 
-## 🤝 Kontribusi
+## 🤝 Contributing
 
-Pull requests dipersilakan. Untuk perubahan besar, harap buka issue terlebih dahulu untuk mendiskusikan apa yang ingin Anda ubah.
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
-1. Fork project ini
-2. Buat feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit perubahan Anda (`git commit -m 'Add some AmazingFeature'`)
-4. Push ke branch (`git push origin feature/AmazingFeature`)
-5. Buka Pull Request
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## 📄 Lisensi
+## 📄 License
 
-[MIT](https://choosealicense.com/licenses/mit/)
+[MIT](LICENSE)

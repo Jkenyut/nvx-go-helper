@@ -124,13 +124,13 @@ func (p Pagination) Links(baseURL string) (map[string]string, error) {
 		return nil, err
 	}
 
-	// Gunakan RawPath jika ada, fallback ke Path
+	// Use RawPath if available, fallback to Path
 	path := u.Path
 	if u.RawPath != "" {
 		path = u.RawPath
 	}
 
-	// Bangun base URL lengkap: scheme://host/path
+	// Build complete base URL: scheme://host/path
 	base := fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, path)
 
 	links := make(map[string]string)
