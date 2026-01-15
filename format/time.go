@@ -1,12 +1,9 @@
 // Package format provides safe, reusable formatting utilities for time, currency, phone numbers, etc.
-// This file contains timezone-aware time helpers following Indonesia's 2025 best practices:
 //
 //   - All dates in database → UTC
-//   - All dates shown to users → WIB (Western Indonesian Time = UTC+7)
+//   - All dates shown to users → WIB (UTC+7)
 //   - Never use time.Local (unpredictable on servers)
 //   - Always use fixed zones (zero external dependency)
-//
-// Used daily in production by Gojek, Tokopedia, Shopee, Traveloka, BRI, BCA, Mandiri, etc.
 package format
 
 import (
@@ -15,20 +12,20 @@ import (
 )
 
 // =============================================================================
-// TIMEZONE DEFINITIONS (UTC+7 = Indonesia Western Time)
+// TIMEZONE DEFINITIONS (UTC+7)
 // =============================================================================
 var (
 	// UTC location
 	UTC = time.UTC
 
-	// WIB = Western Indonesian Time (UTC+7) — no daylight saving
+	// WIB (UTC+7) — no daylight saving
 	WIB     = time.FixedZone("Asia/Jakarta", 7*60*60)
 	Jakarta = WIB                                     // most commonly used alias
 	Bangkok = time.FixedZone("Asia/Bangkok", 7*60*60) // same offset as WIB
 )
 
 // =============================================================================
-// COMMON DATE/TIME LAYOUTS (Indonesian Standard)
+// COMMON DATE/TIME LAYOUTS
 // =============================================================================
 const (
 	LayoutDateOnly    = "02-01-2006"                // 31-12-2025
@@ -49,8 +46,8 @@ func NowUTC() time.Time {
 	return time.Now().UTC()
 }
 
-// NowWIB returns the current time in Western Indonesian Time (UTC+7).
-// Use this for: displaying time to Indonesian users.
+// NowWIB returns the current time in WIB (UTC+7).
+// Use this for displaying time to users in that timezone.
 func NowWIB() time.Time {
 	return time.Now().In(WIB)
 }

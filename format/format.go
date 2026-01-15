@@ -5,8 +5,8 @@
 //
 // Contains:
 //   - String helpers: Title case, unique append
-//   - Number formatting: Indonesian Rupiah
-//   - Bank formatting: BRI account number
+//   - Number formatting: Currency
+//   - Bank formatting: Account number (specific format)
 //   - Safe type-to-string conversion for logging, cache keys, filenames, etc.
 package format
 
@@ -106,7 +106,7 @@ func AddStringUnique(value string, slice *[]string) {
 // NUMBER & BANK HELPERS
 // =============================================================================
 
-// Rupiah formats a float64 amount as Indonesian Rupiah string.
+// Rupiah formats a float64 amount as a currency string (e.g. 150.000,00).
 // Uses dot (.) as thousand separator and comma (,) as decimal separator.
 // Always shows exactly 2 decimal places.
 //
@@ -118,7 +118,7 @@ func Rupiah(amount float64) string {
 	return formatNumber(amount, 2, ",", ".")
 }
 
-// BRINorek formats a BRI account number into the standard pattern: XXXX-XX-XXXXXX-XX-X
+// BRINorek formats an account number into the standard pattern: XXXX-XX-XXXXXX-XX-X
 // All existing hyphens and spaces are removed first.
 // If input is shorter than 15 digits, returns empty string.
 // If longer, only the first 15 digits are used.

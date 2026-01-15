@@ -20,7 +20,7 @@
 //	  "data": { "id": "0192c84f-...", "name": "Budi" }
 //	}
 //
-// This package is the de facto standard for Go backend teams in Indonesia in 2025.
+// This package provides a consistent JSON structure for API responses.
 package response
 
 import (

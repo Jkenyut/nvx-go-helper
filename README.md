@@ -33,7 +33,7 @@ err := enc.Decrypt(token, &data)
 ```
 
 ### 2. Format (`/format`)
-Helpers for string manipulation, number formatting, and local banking standards (Indonesia).
+Helpers for string manipulation, number formatting, and standard banking formats.
 
 ```go
 import "github.com/DT-SMS-Finance/nvx-go-helper/format"
@@ -41,7 +41,7 @@ import "github.com/DT-SMS-Finance/nvx-go-helper/format"
 // Format Rupiah
 fmt.Println(format.Rupiah(150000)) // "150.000,00"
 
-// Format BRI Account Number
+// Format Account Number
 fmt.Println(format.BRINorek("123456789012345")) // "1234-56-789012-34-5"
 
 // Title Case (Smart)
