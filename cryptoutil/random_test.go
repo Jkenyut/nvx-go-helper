@@ -1,7 +1,6 @@
-package crypto
+package cryptoutil
 
 import (
-
 	"strings"
 	"testing"
 
@@ -63,7 +62,7 @@ func TestStringWithCharset(t *testing.T) {
 	charset := "ABC"
 	s := stringWithCharset(100, charset)
 	assert.Len(t, s, 100)
-	
+
 	// Ensure ONLY characters from charset are used
 	for _, r := range s {
 		assert.True(t, strings.ContainsRune(charset, r), "Character %c not in charset", r)

@@ -1,4 +1,4 @@
-package crypto
+package cryptoutil
 
 import (
 	"testing"
@@ -14,7 +14,7 @@ func TestUUIDV4(t *testing.T) {
 		id2 := V4()
 		assert.NotEmpty(t, id1)
 		assert.NotEqual(t, id1, id2)
-		
+
 		parsed, err := uuid.Parse(id1)
 		assert.NoError(t, err)
 		assert.Equal(t, uuid.Version(4), parsed.Version())
@@ -32,10 +32,10 @@ func TestUUIDV7(t *testing.T) {
 		id1 := V7()
 		time.Sleep(1 * time.Millisecond) // Ensure monotonic time difference
 		id2 := V7()
-		
+
 		assert.NotEmpty(t, id1)
 		assert.NotEqual(t, id1, id2)
-		
+
 		// V7 roughly sorts by time
 		assert.Less(t, id1, id2)
 

@@ -1,33 +1,30 @@
-// Package random provides cryptographically secure, fast, and convenient random string
-// generation utilities used across all services.
+// Package cryptoutil provides cryptographically secure, fast, and convenient random string
+// generation utilities.
 //
 // Why this package exists
 // • crypto/rand is secure but verbose
 // • math/rand is fast but NOT cryptographically secure
-// • Every Go backend in Indonesia needs OTP, tokens, referral codes, short URLs, etc.
 //
-// This package is the de facto standard in 2025 for generating:
-//   - OTP (SMS/WhatsApp)
+// This package is suitable for generating:
+//   - OTP (SMS/Email)
 //   - Password reset tokens
 //   - Referral / promo codes
-//   - Short URLs (bit.ly style)
+//   - Short URLs
 //   - Unique filenames
 //   - Temporary API keys
 //   - Captcha/session IDs
 //
 // All functions use crypto/rand under the hood → cryptographically secure
-// Zero external dependencies → safe for banks, fintech, e-commerce
+// Zero external dependencies.
 // Extremely fast (benchmarked at >10M ops/sec on modern CPUs)
 //
 // Example usage:
 //
-//	otp := random.Numbers(6)                    // "583920"
-//	code := random.String(8)                    // "K9P2M7X4"
-//	token := random.StringMixed(32)             // "aB9kLmPqRx2ZyT7vN8wQ5eD3cF6gH8jK"
-//	shortURL := random.StringLower(7)           // "k9p2m7x"
-//
-// Used daily by Gojek, Tokopedia, Shopee, Traveloka, BRI, BCA, and thousands of startups.
-package crypto
+//	otp := cryptoutil.Numbers(6)                    // "583920"
+//	code := cryptoutil.String(8)                    // "K9P2M7X4"
+//	token := cryptoutil.StringMixed(32)             // "aB9kLmPqRx2ZyT7vN8wQ5eD3cF6gH8jK"
+//	shortURL := cryptoutil.StringLower(7)           // "k9p2m7x"
+package cryptoutil
 
 import (
 	"crypto/rand"
@@ -36,7 +33,7 @@ import (
 
 // Character sets
 const (
-	// Uppercase letters + numbers (most common in Indonesia for referral codes)
+	// Uppercase letters + numbers
 	letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 	// Lowercase + numbers (perfect for URLs)
@@ -85,18 +82,26 @@ func Numbers(length int) string {
 // stringWithCharset is the core implementation shared by all string functions.
 // It is intentionally unexported — users should use the semantic helpers above.
 func stringWithCharset(length int, charset string) string {
+	// Guard clause for invalid length
 	if length <= 0 {
 		return ""
 	}
+	// Create byte slice of requested length
 	b := make([]byte, length)
+	// Calculate max index based on charset length
 	maxID := big.NewInt(int64(len(charset)))
 
+	// Iterate to fill each byte
 	for i := range b {
+		// Generate cryptographically secure random index
 		n, err := rand.Int(rand.Reader, maxID)
 		if err != nil {
+			// Panic is acceptable here as crypto/rand failure is catastrophic
 			panic("crypto/rand.Int failed: " + err.Error())
 		}
+		// Select character from charset using random index
 		b[i] = charset[n.Int64()]
 	}
+	// Convert byte slice to string and return
 	return string(b)
 }

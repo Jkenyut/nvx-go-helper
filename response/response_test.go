@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/Jkenyut/nvx-go-helper/activity"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewMeta_UsesRequestIDFromContext(t *testing.T) {
 	expectedID := uuid.New().String()
-	ctx := context.WithValue(context.Background(), requestIDKey, expectedID)
+	ctx := activity.WithRequestID(context.Background(), expectedID)
 
 	meta := NewMeta(ctx, true, "test", 200)
 
@@ -33,7 +34,7 @@ func TestNewMeta_GeneratesNewIDWhenMissing(t *testing.T) {
 }
 
 func TestSuccessResponses(t *testing.T) {
-	ctx := context.WithValue(context.Background(), requestIDKey, "fixed-id-123")
+	ctx := activity.WithRequestID(context.Background(), "fixed-id-123")
 
 	tests := []struct {
 		name    string
@@ -85,7 +86,7 @@ func TestErrorResponses(t *testing.T) {
 }
 
 func TestResponse_JSONSerialization(t *testing.T) {
-	ctx := context.WithValue(context.Background(), requestIDKey, "test-12345")
+	ctx := activity.WithRequestID(context.Background(), "test-12345")
 	resp := Created(ctx, "user registered", map[string]string{"name": "Budi"})
 
 	data, _ := json.Marshal(resp)
@@ -100,7 +101,7 @@ func TestResponse_JSONSerialization(t *testing.T) {
 }
 
 func TestResponse_WithMessage(t *testing.T) {
-	ctx := context.WithValue(context.Background(), requestIDKey, "test-12345")
+	ctx := context.WithValue(context.Background(), activity.RequestIDKey, "test-12345")
 	resp := WithMessage(ctx, "user registered", 200)
 
 	data, _ := json.Marshal(resp)

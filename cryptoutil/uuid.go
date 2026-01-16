@@ -1,4 +1,4 @@
-// Package id provides a minimal, opinionated, and battle-tested UUID generator
+// Package cryptoutil provides a minimal, opinionated, and battle-tested UUID generator
 // tailored for modern Go applications in 2025 and beyond.
 //
 // Only two UUID versions are exposed because they are the only ones you actually need:
@@ -13,13 +13,13 @@
 //
 // Example usage:
 //
-//	userID := id.V7UUID()          // primary key (zero allocation)
-//	token  := id.V4()              // password reset token
-//	valid  := id.IsValid(input)    // fast validation
+//	userID := cryptoutil.V7UUID()          // primary key (zero allocation)
+//	token  := cryptoutil.V4()              // password reset token
+//	valid  := cryptoutil.IsValid(input)    // fast validation
 //
 // All functions are safe for concurrent use and allocate zero heap memory
 // when the UUID object form is used (V4UUID / V7UUID).
-package crypto
+package cryptoutil
 
 import (
 	"github.com/google/uuid"
@@ -66,7 +66,8 @@ func V4UUID() uuid.UUID {
 //
 //	userID := id.V7() // "0192c84f-17a1-7d2b-9f8a-3c4d5e6f7890"
 func V7() string {
-	u, _ := uuid.NewV7()
+	// Generate new V7 UUID
+	u, _ := uuid.NewV7() // Error ignored as NewV7 only errors on clock failure which is rare/panic-worthy
 	return u.String()
 }
 
@@ -95,7 +96,9 @@ func V7UUID() uuid.UUID {
 //	u := id.Parse("0192c84f-17a1-7d2b-9f8a-3c4d5e6f7890")
 //	if u == uuid.Nil { ... }
 func Parse(s string) uuid.UUID {
+	// Attempt to parse string
 	u, _ := uuid.Parse(s)
+	// Return result (uuid.Nil on error)
 	return u
 }
 
@@ -110,6 +113,7 @@ func Parse(s string) uuid.UUID {
 //	    return
 //	}
 func IsValid(s string) bool {
+	// Attempt to parse and check error
 	_, err := uuid.Parse(s)
 	return err == nil
 }

@@ -5,8 +5,8 @@
 //
 // Contains:
 //   - String helpers: Title case, unique append
-//   - Number formatting: Indonesian Rupiah
-//   - Bank formatting: BRI account number
+//   - Number formatting: Currency
+//   - Bank formatting: Account number (specific format)
 //   - Safe type-to-string conversion for logging, cache keys, filenames, etc.
 package format
 
@@ -36,17 +36,21 @@ func Title(s string) string {
 		return ""
 	}
 	var result strings.Builder
+	// Flag to track if the next character should be uppercased
 	upperNext := true
 	for _, r := range s {
+		// Check for delimiters
 		if r == ' ' || r == '-' || r == '_' {
 			result.WriteRune(r)
 			upperNext = true
 			continue
 		}
+		// Uppercase if flag is set
 		if upperNext {
 			result.WriteRune(toUpper(r))
 			upperNext = false
 		} else {
+			// Otherwise lowercase
 			result.WriteRune(toLower(r))
 		}
 	}
@@ -57,7 +61,7 @@ func Title(s string) string {
 // Non-letter runes are returned unchanged. Fast and zero-allocation.
 func toUpper(r rune) rune {
 	if r >= 'a' && r <= 'z' {
-		return r - 32
+		return r - 32 // ASCII logic
 	}
 	return r
 }
@@ -66,7 +70,7 @@ func toUpper(r rune) rune {
 // Non-letter runes are returned unchanged. Fast and zero-allocation.
 func toLower(r rune) rune {
 	if r >= 'A' && r <= 'Z' {
-		return r + 32
+		return r + 32 // ASCII logic
 	}
 	return r
 }
@@ -81,16 +85,20 @@ func toLower(r rune) rune {
 //	AddStringUnique("admin", &items)      // no change
 //	AddStringUnique("moderator", &items) // items becomes ["Admin", "User", "Moderator"]
 func AddStringUnique(value string, slice *[]string) {
+	// Guard clause for empty input
 	if strings.TrimSpace(value) == "" {
 		return
 	}
+	// Normalize value
 	value = Title(value)
 
+	// Check for duplicates
 	for _, v := range *slice {
 		if strings.EqualFold(v, value) {
-			return
+			return // Already exists
 		}
 	}
+	// Append if unique
 	*slice = append(*slice, value)
 }
 
@@ -98,7 +106,7 @@ func AddStringUnique(value string, slice *[]string) {
 // NUMBER & BANK HELPERS
 // =============================================================================
 
-// Rupiah formats a float64 amount as Indonesian Rupiah string.
+// Rupiah formats a float64 amount as a currency string (e.g. 150.000,00).
 // Uses dot (.) as thousand separator and comma (,) as decimal separator.
 // Always shows exactly 2 decimal places.
 //
@@ -110,7 +118,7 @@ func Rupiah(amount float64) string {
 	return formatNumber(amount, 2, ",", ".")
 }
 
-// BRINorek formats a BRI account number into the standard pattern: XXXX-XX-XXXXXX-XX-X
+// BRINorek formats an account number into the standard pattern: XXXX-XX-XXXXXX-XX-X
 // All existing hyphens and spaces are removed first.
 // If input is shorter than 15 digits, returns empty string.
 // If longer, only the first 15 digits are used.
@@ -119,14 +127,18 @@ func Rupiah(amount float64) string {
 //
 //	BRINorek("123456789012345") // "1234-56-789012-34-5"
 func BRINorek(norek string) string {
+	// Clean input
 	norek = strings.ReplaceAll(norek, "-", "")
 	norek = strings.ReplaceAll(norek, " ", "")
+	// Validate length
 	if len(norek) < 15 {
 		return ""
 	}
+	// Truncate if too long
 	if len(norek) > 15 {
 		norek = norek[:15]
 	}
+	// Format with hyphens
 	return fmt.Sprintf("%s-%s-%s-%s-%s",
 		norek[:4], norek[4:6], norek[6:12], norek[12:14], norek[14:])
 }
@@ -134,11 +146,13 @@ func BRINorek(norek string) string {
 // formatNumber is a generic number formatter used internally by Rupiah.
 // Formats num with given decimal places, decimal separator, and thousand separator.
 func formatNumber(num float64, decimals int, decSep, thouSep string) string {
+	// Handle negative numbers
 	isNegative := num < 0
 	if isNegative {
 		num = -num
 	}
 
+	// Convert float to string with fixed precision
 	str := strconv.FormatFloat(num, 'f', decimals, 64)
 	parts := strings.Split(str, ".")
 	intPart := parts[0]
@@ -146,6 +160,7 @@ func formatNumber(num float64, decimals int, decSep, thouSep string) string {
 	if len(parts) > 1 {
 		decPart = parts[1]
 	}
+	// Pad decimal part if needed
 	if len(decPart) < decimals {
 		decPart += strings.Repeat("0", decimals-len(decPart))
 	}
@@ -154,12 +169,14 @@ func formatNumber(num float64, decimals int, decSep, thouSep string) string {
 	var intFormatted strings.Builder
 	l := len(intPart)
 	for i := 0; i < l; i++ {
+		// Add separator every 3 digits (except at start)
 		if i > 0 && (l-i)%3 == 0 {
 			intFormatted.WriteString(thouSep)
 		}
 		intFormatted.WriteByte(intPart[i])
 	}
 
+	// Assemble final string
 	result := intFormatted.String() + decSep + decPart
 	if isNegative {
 		return "-" + result
@@ -194,6 +211,7 @@ func ToString(v any) string {
 		return ""
 	}
 
+	// Type switch for optimal performance on common types
 	switch value := v.(type) {
 	case string:
 		return value
@@ -222,10 +240,11 @@ func ToString(v any) string {
 			return ""
 		}
 
-		// JSON fallback
+		// JSON fallback for complex types
 		if b, err := json.Marshal(v); err == nil {
 			return string(b)
 		}
+		// Ultimate fallback
 		return fmt.Sprintf("%v", v)
 	}
 }
@@ -240,12 +259,16 @@ func ToString(v any) string {
 //	ToSafeString("user/name:123") // "user_name_123"
 //	ToSafeString("")              // "empty"
 func ToSafeString(v any) string {
+	// Convert to string first
 	s := ToString(v)
+	// Trim whitespace
 	s = strings.TrimSpace(s)
+	// Replace unsafe characters
 	s = strings.ReplaceAll(s, " ", "_")
 	s = strings.ReplaceAll(s, "/", "_")
 	s = strings.ReplaceAll(s, "\\", "_")
 	s = strings.ReplaceAll(s, ":", "_")
+	// Handle empty result
 	if s == "" {
 		return "empty"
 	}
