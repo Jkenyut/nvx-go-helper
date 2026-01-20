@@ -130,6 +130,61 @@ func InternalError(ctx context.Context) Response {
 	return Response{Meta: NewMeta(ctx, false, "internal server error", 500)}
 }
 
+// MethodNotAllowed sends a 405 Method Not Allowed response.
+func MethodNotAllowed(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 405)}
+}
+
+// NotAcceptable sends a 406 Not Acceptable response.
+func NotAcceptable(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 406)}
+}
+
+// RequestTimeout sends a 408 Request Timeout response.
+func RequestTimeout(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 408)}
+}
+
+// Gone sends a 410 Gone response.
+func Gone(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 410)}
+}
+
+// PreconditionFailed sends a 412 Precondition Failed response.
+func PreconditionFailed(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 412)}
+}
+
+// PayloadTooLarge sends a 413 Payload Too Large response.
+func PayloadTooLarge(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 413)}
+}
+
+// UnsupportedMediaType sends a 415 Unsupported Media Type response.
+func UnsupportedMediaType(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 415)}
+}
+
+// NotImplemented sends a 501 Not Implemented response.
+func NotImplemented(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 501)}
+}
+
+// BadGateway sends a 502 Bad Gateway response.
+func BadGateway(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 502)}
+}
+
+// ServiceUnavailable sends a 503 Service Unavailable response.
+func ServiceUnavailable(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 503)}
+}
+
+// GatewayTimeout sends a 504 Gateway Timeout response.
+func GatewayTimeout(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 504)}
+}
+
 // === HELPERS ===
 
 // Success is a shortcut for OK(ctx, "success", data).
