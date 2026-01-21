@@ -25,9 +25,10 @@ package response
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/Jkenyut/nvx-go-helper/activity"
-	"github.com/Jkenyut/nvx-go-helper/crypto"
+	"github.com/Jkenyut/nvx-go-helper/cryptoutil"
 )
 
 type Meta struct {
@@ -44,11 +45,11 @@ type Response struct {
 
 // NewMeta builds metadata with correct request_id precedence:
 // 1. From context (middleware/header)
-// 2. Generate new UUID v4
+// 2. Generate new UUID v7
 func NewMeta(ctx context.Context, success bool, message string, status int) Meta {
 	reqID, _ := activity.GetRequestID(ctx)
 	if reqID == "" {
-		reqID = crypto.V4()
+		reqID = cryptoutil.V7()
 	}
 
 	return Meta{
@@ -122,4 +123,13 @@ func WithMessage(ctx context.Context, message string, status int) Response {
 func WithMessageData(ctx context.Context, message string, status int, data any) Response {
 	success := status >= 200 && status < 300
 	return Response{Meta: NewMeta(ctx, success, message, status), Data: data}
+}
+
+func (r *Response) JSONMarshal() []byte {
+	if r.Meta.StatusCode == 0 {
+		r.Meta.StatusCode = 400
+	}
+
+	resp, _ := json.Marshal(r)
+	return resp
 }

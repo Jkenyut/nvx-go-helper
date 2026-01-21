@@ -2,24 +2,21 @@ package activity
 
 import (
 	"context"
-	"github.com/Jkenyut/nvx-go-helper/crypto"
 )
 
 type key int
 
 const (
 	TransactionID key = iota
-	Action
-	ClientID
-	Payload
-	Result
+	MerchantID
 	RequestIDKey
+	UserID
+	UserType
+	UserIP
 )
 
-func NewContext(action string) context.Context {
-	trxID := crypto.V7()
-	ctx := context.WithValue(context.Background(), TransactionID, trxID)
-	return context.WithValue(ctx, Action, action)
+func WithTransactionID(ctx context.Context, trxID string) context.Context {
+	return context.WithValue(ctx, TransactionID, trxID)
 }
 
 func GetTransactionID(ctx context.Context) (string, bool) {
@@ -27,38 +24,13 @@ func GetTransactionID(ctx context.Context) (string, bool) {
 	return trxID, ok
 }
 
-func WithAction(ctx context.Context, action string) context.Context {
-	return context.WithValue(ctx, Action, action)
+func WithMerchantID(ctx context.Context, merchantID string) context.Context {
+	return context.WithValue(ctx, MerchantID, merchantID)
 }
 
-func GetAction(ctx context.Context) (string, bool) {
-	action, ok := ctx.Value(Action).(string)
-	return action, ok
-}
-
-func WithClientID(ctx context.Context, clientID string) context.Context {
-	return context.WithValue(ctx, ClientID, clientID)
-}
-
-func GetClientID(ctx context.Context) (string, bool) {
-	clientID, ok := ctx.Value(ClientID).(string)
-	return clientID, ok
-}
-
-func WithPayload(ctx context.Context, payload interface{}) context.Context {
-	return context.WithValue(ctx, Payload, payload)
-}
-
-func GetPayload(ctx context.Context) interface{} {
-	return ctx.Value(Payload)
-}
-
-func WithResult(ctx context.Context, payload interface{}) context.Context {
-	return context.WithValue(ctx, Result, payload)
-}
-
-func GetResult(ctx context.Context) interface{} {
-	return ctx.Value(Result)
+func GetMerchantID(ctx context.Context) (string, bool) {
+	merchantID, ok := ctx.Value(MerchantID).(string)
+	return merchantID, ok
 }
 
 func WithRequestID(ctx context.Context, requestID string) context.Context {
@@ -70,27 +42,68 @@ func GetRequestID(ctx context.Context) (string, bool) {
 	return requestID, ok
 }
 
-func GetFields(ctx context.Context) map[string]interface{} {
+func WithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, UserID, userID)
+}
+
+func GetUserID(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(UserID).(string)
+	return userID, ok
+}
+
+func WithUserType(ctx context.Context, userType string) context.Context {
+	return context.WithValue(ctx, UserType, userType)
+}
+
+func GetUserType(ctx context.Context) (string, bool) {
+	userType, ok := ctx.Value(UserType).(string)
+	return userType, ok
+}
+
+func WithUserIP(ctx context.Context, userIP string) context.Context {
+	return context.WithValue(ctx, UserIP, userIP)
+}
+
+func GetUserIP(ctx context.Context) (string, bool) {
+	userIP, ok := ctx.Value(UserIP).(string)
+	return userIP, ok
+}
+
+func WithCustomFields(ctx context.Context, key string, value interface{}) context.Context {
+	return context.WithValue(ctx, key, value)
+}
+
+func GetAllFieldsFromContext(ctx context.Context) map[string]interface{} {
 	fields := make(map[string]interface{})
 
 	if id, ok := GetTransactionID(ctx); ok {
-		fields["transaction_id"] = id
-	}
-
-	if action, ok := GetAction(ctx); ok {
-		fields["action"] = action
+		fields["nvx_transaction_id"] = id // generate by middleware
 	}
 
 	if requestID, ok := GetRequestID(ctx); ok {
-		fields["request_id"] = requestID
+		fields["nvx_request_id"] = requestID // from client
 	}
 
-	if clientID, ok := GetClientID(ctx); ok {
-		fields["client_id"] = clientID
+	if merchantID, ok := GetMerchantID(ctx); ok {
+		fields["nvx_merchant_id"] = merchantID // from client
 	}
 
-	fields["payload"] = GetPayload(ctx)
-	fields["result"] = GetResult(ctx)
+	if userID, ok := GetUserID(ctx); ok {
+		fields["nvx_user_id"] = userID // from token
+	}
+
+	if userType, ok := GetUserType(ctx); ok {
+		fields["nvx_user_type"] = userType // from token
+	}
+
+	if userIP, ok := GetUserIP(ctx); ok {
+		fields["nvx_user_ip"] = userIP // from client
+	}
 
 	return fields
+}
+
+func GetFieldValueFromContext[T any](ctx context.Context, key any) (T, bool) {
+	u, ok := ctx.Value(key).(T)
+	return u, ok
 }

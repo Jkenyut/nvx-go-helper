@@ -1,7 +1,6 @@
-package crypto
+package cryptoutil
 
 import (
-
 	"testing"
 
 	"github.com/stretchr/testify/assert"

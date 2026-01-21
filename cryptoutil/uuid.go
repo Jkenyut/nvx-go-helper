@@ -1,4 +1,4 @@
-// Package id provides a minimal, opinionated, and battle-tested UUID generator
+// Package cryptoutil provides a minimal, opinionated, and battle-tested UUID generator
 // tailored for modern Go applications in 2025 and beyond.
 //
 // Only two UUID versions are exposed because they are the only ones you actually need:
@@ -13,13 +13,13 @@
 //
 // Example usage:
 //
-//	userID := id.V7UUID()          // primary key (zero allocation)
-//	token  := id.V4()              // password reset token
-//	valid  := id.IsValid(input)    // fast validation
+//	userID := cryptoutil.V7UUID()          // primary key (zero allocation)
+//	token  := cryptoutil.V4()              // password reset token
+//	valid  := cryptoutil.IsValid(input)    // fast validation
 //
 // All functions are safe for concurrent use and allocate zero heap memory
 // when the UUID object form is used (V4UUID / V7UUID).
-package crypto
+package cryptoutil
 
 import (
 	"github.com/google/uuid"
@@ -36,8 +36,10 @@ import (
 //
 // Example:
 //
-//	token := id.V4() // "a3f1b9c2-8e4d-4912-b7c5-d3e8f9a1b2c3"
+//	token := cryptoutil.V4() // "a3f1b9c2-8e4d-4912-b7c5-d3e8f9a1b2c3"
 func V4() string {
+	// uuid.New() creates a Version 4 UUID (random)
+	// It uses crypto/rand for entropy
 	return uuid.New().String()
 }
 
@@ -48,7 +50,7 @@ func V4() string {
 // Example:
 //
 //	type Session struct {
-//	    ID uuid.UUID // ← use id.V4UUID()
+//	    ID uuid.UUID // ← use cryptoutil.V4UUID()
 //	}
 func V4UUID() uuid.UUID {
 	return uuid.New()
@@ -64,8 +66,10 @@ func V4UUID() uuid.UUID {
 //
 // Example:
 //
-//	userID := id.V7() // "0192c84f-17a1-7d2b-9f8a-3c4d5e6f7890"
+//	userID := cryptoutil.V7() // "0192c84f-17a1-7d2b-9f8a-3c4d5e6f7890"
 func V7() string {
+	// uuid.NewV7() allocates a new Version 7 UUID
+	// Format: unix_ts_ms (48 bits) + ver (4 bits) + rand_a (12 bits) + var (2 bits) + rand_b (62 bits)
 	u, _ := uuid.NewV7()
 	return u.String()
 }
@@ -80,7 +84,7 @@ func V7() string {
 //	    ID uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v7()"`
 //	}
 //
-//	user := User{ID: id.V7UUID()}
+//	user := User{ID: cryptoutil.V7UUID()}
 func V7UUID() uuid.UUID {
 	u, _ := uuid.NewV7()
 	return u
@@ -92,10 +96,12 @@ func V7UUID() uuid.UUID {
 //
 // Example:
 //
-//	u := id.Parse("0192c84f-17a1-7d2b-9f8a-3c4d5e6f7890")
+//	u := cryptoutil.Parse("0192c84f-17a1-7d2b-9f8a-3c4d5e6f7890")
 //	if u == uuid.Nil { ... }
 func Parse(s string) uuid.UUID {
+	// uuid.Parse handles hex string validation and parsing
 	u, _ := uuid.Parse(s)
+	// If error occurs, u is uuid.Nil (0000...)
 	return u
 }
 
@@ -105,11 +111,12 @@ func Parse(s string) uuid.UUID {
 //
 // Example:
 //
-//	if !id.IsValid(c.Param("id")) {
+//	if !cryptoutil.IsValid(c.Param("id")) {
 //	    c.JSON(400, "invalid uuid")
 //	    return
 //	}
 func IsValid(s string) bool {
+	// Try parsing; if no error, the string format is valid
 	_, err := uuid.Parse(s)
 	return err == nil
 }
