@@ -25,6 +25,7 @@ package response
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/Jkenyut/nvx-go-helper/activity"
 	"github.com/Jkenyut/nvx-go-helper/cryptoutil"
@@ -48,13 +49,13 @@ type Response struct {
 
 // NewMeta builds metadata with correct request_id precedence:
 // 1. From context (middleware/header)
-// 2. Generate new UUID v4
+// 2. Generate new UUID v7
 func NewMeta(ctx context.Context, success bool, message string, status int) Meta {
 	// Try to get request ID from context
 	reqID, _ := activity.GetRequestID(ctx)
 	// If not found, generate a new random UUID v4
 	if reqID == "" {
-		reqID = cryptoutil.V4()
+		reqID = cryptoutil.V7()
 	}
 
 	// Return the constructed Meta struct
@@ -130,6 +131,61 @@ func InternalError(ctx context.Context) Response {
 	return Response{Meta: NewMeta(ctx, false, "internal server error", 500)}
 }
 
+// MethodNotAllowed sends a 405 Method Not Allowed response.
+func MethodNotAllowed(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 405)}
+}
+
+// NotAcceptable sends a 406 Not Acceptable response.
+func NotAcceptable(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 406)}
+}
+
+// RequestTimeout sends a 408 Request Timeout response.
+func RequestTimeout(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 408)}
+}
+
+// Gone sends a 410 Gone response.
+func Gone(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 410)}
+}
+
+// PreconditionFailed sends a 412 Precondition Failed response.
+func PreconditionFailed(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 412)}
+}
+
+// PayloadTooLarge sends a 413 Payload Too Large response.
+func PayloadTooLarge(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 413)}
+}
+
+// UnsupportedMediaType sends a 415 Unsupported Media Type response.
+func UnsupportedMediaType(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 415)}
+}
+
+// NotImplemented sends a 501 Not Implemented response.
+func NotImplemented(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 501)}
+}
+
+// BadGateway sends a 502 Bad Gateway response.
+func BadGateway(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 502)}
+}
+
+// ServiceUnavailable sends a 503 Service Unavailable response.
+func ServiceUnavailable(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 503)}
+}
+
+// GatewayTimeout sends a 504 Gateway Timeout response.
+func GatewayTimeout(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 504)}
+}
+
 // === HELPERS ===
 
 // Success is a shortcut for OK(ctx, "success", data).
@@ -149,4 +205,13 @@ func WithMessageData(ctx context.Context, message string, status int, data any) 
 	// Determine success based on status code range
 	success := status >= 200 && status < 300
 	return Response{Meta: NewMeta(ctx, success, message, status), Data: data}
+}
+
+func (r *Response) JSONMarshal() []byte {
+	if r.Meta.StatusCode == 0 {
+		r.Meta.StatusCode = 400
+	}
+
+	resp, _ := json.Marshal(r)
+	return resp
 }

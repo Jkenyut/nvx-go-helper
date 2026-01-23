@@ -65,14 +65,25 @@ func TestErrorResponses(t *testing.T) {
 	ctx := context.Background() // no request_id → auto generated
 
 	errorFuncs := map[string]func(context.Context) Response{
-		"BadRequest":          func(c context.Context) Response { return BadRequest(c, "invalid input") },
-		"Unauthorized":        func(c context.Context) Response { return Unauthorized(c, "auth required") },
-		"Forbidden":           func(c context.Context) Response { return Forbidden(c, "access denied") },
-		"NotFound":            func(c context.Context) Response { return NotFound(c, "not found") },
-		"Conflict":            func(c context.Context) Response { return Conflict(c, "already exists") },
-		"UnprocessableEntity": func(c context.Context) Response { return UnprocessableEntity(c, "validation failed") },
-		"TooManyRequests":     func(c context.Context) Response { return TooManyRequests(c, "rate limited") },
-		"InternalError":       func(c context.Context) Response { return InternalError(c) },
+		"BadRequest":           func(c context.Context) Response { return BadRequest(c, "invalid input") },
+		"Unauthorized":         func(c context.Context) Response { return Unauthorized(c, "auth required") },
+		"Forbidden":            func(c context.Context) Response { return Forbidden(c, "access denied") },
+		"NotFound":             func(c context.Context) Response { return NotFound(c, "not found") },
+		"Conflict":             func(c context.Context) Response { return Conflict(c, "already exists") },
+		"UnprocessableEntity":  func(c context.Context) Response { return UnprocessableEntity(c, "validation failed") },
+		"TooManyRequests":      func(c context.Context) Response { return TooManyRequests(c, "rate limited") },
+		"InternalError":        func(c context.Context) Response { return InternalError(c) },
+		"MethodNotAllowed":     func(c context.Context) Response { return MethodNotAllowed(c, "method not allowed") },
+		"NotAcceptable":        func(c context.Context) Response { return NotAcceptable(c, "not acceptable") },
+		"RequestTimeout":       func(c context.Context) Response { return RequestTimeout(c, "request timeout") },
+		"Gone":                 func(c context.Context) Response { return Gone(c, "gone") },
+		"PreconditionFailed":   func(c context.Context) Response { return PreconditionFailed(c, "precondition failed") },
+		"PayloadTooLarge":      func(c context.Context) Response { return PayloadTooLarge(c, "payload too large") },
+		"UnsupportedMediaType": func(c context.Context) Response { return UnsupportedMediaType(c, "unsupported media type") },
+		"NotImplemented":       func(c context.Context) Response { return NotImplemented(c, "not implemented") },
+		"BadGateway":           func(c context.Context) Response { return BadGateway(c, "bad gateway") },
+		"ServiceUnavailable":   func(c context.Context) Response { return ServiceUnavailable(c, "service unavailable") },
+		"GatewayTimeout":       func(c context.Context) Response { return GatewayTimeout(c, "gateway timeout") },
 	}
 
 	for name, fn := range errorFuncs {
@@ -109,4 +120,12 @@ func TestResponse_WithMessage(t *testing.T) {
 
 	assert.Contains(t, jsonStr, `"success":true`)
 	assert.Contains(t, jsonStr, `"message":"user registered"`)
+
+	// Test failure case
+	respErr := WithMessage(ctx, "something wrong", 400)
+	dataErr, _ := json.Marshal(respErr)
+	jsonStrErr := string(dataErr)
+
+	assert.Contains(t, jsonStrErr, `"success":false`)
+	assert.Contains(t, jsonStrErr, `"status_code":400`)
 }

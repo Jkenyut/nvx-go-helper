@@ -8,96 +8,100 @@ import (
 )
 
 func TestActivityContext(t *testing.T) {
-	t.Run("NewContext", func(t *testing.T) {
-		ctx := NewContext("login")
+	ctx := context.Background()
 
-		id, ok := GetTransactionID(ctx)
+	t.Run("TransactionID", func(t *testing.T) {
+		trxID := "trx-123"
+		ctx = WithTransactionID(ctx, trxID)
+		got, ok := GetTransactionID(ctx)
 		assert.True(t, ok)
-		assert.NotEmpty(t, id)
+		assert.Equal(t, trxID, got)
+	})
 
-		action, ok := GetAction(ctx)
+	t.Run("MerchantID", func(t *testing.T) {
+		merchantID := "merc-456"
+		ctx = WithMerchantID(ctx, merchantID)
+		got, ok := GetMerchantID(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, "login", action)
+		assert.Equal(t, merchantID, got)
 	})
 
-	t.Run("WithAction", func(t *testing.T) {
-		ctx := context.Background()
-		ctx = WithAction(ctx, "update")
-
-		action, ok := GetAction(ctx)
+	t.Run("RequestID", func(t *testing.T) {
+		reqID := "req-789"
+		ctx = WithRequestID(ctx, reqID)
+		got, ok := GetRequestID(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, "update", action)
+		assert.Equal(t, reqID, got)
 	})
 
-	t.Run("WithClientID", func(t *testing.T) {
-		ctx := context.Background()
-		ctx = WithClientID(ctx, "client-123")
-
-		clientID, ok := GetClientID(ctx)
+	t.Run("UserID", func(t *testing.T) {
+		userID := "user-001"
+		ctx = WithUserID(ctx, userID)
+		got, ok := GetUserID(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, "client-123", clientID)
+		assert.Equal(t, userID, got)
 	})
 
-	t.Run("WithPayload", func(t *testing.T) {
-		payload := map[string]string{"foo": "bar"}
-		ctx := context.Background()
-		ctx = WithPayload(ctx, payload)
-
-		p := GetPayload(ctx)
-		assert.Equal(t, payload, p)
-	})
-
-	t.Run("WithResult", func(t *testing.T) {
-		result := map[string]string{"status": "ok"}
-		ctx := context.Background()
-		ctx = WithResult(ctx, result)
-
-		r := GetResult(ctx)
-		assert.Equal(t, result, r)
-	})
-
-	t.Run("WithRequestID", func(t *testing.T) {
-		ctx := context.Background()
-		ctx = WithRequestID(ctx, "req-xyz")
-
-		reqID, ok := GetRequestID(ctx)
+	t.Run("UserType", func(t *testing.T) {
+		userType := "admin"
+		ctx = WithUserType(ctx, userType)
+		got, ok := GetUserType(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, "req-xyz", reqID)
+		assert.Equal(t, userType, got)
 	})
 
-	t.Run("GetTransactionID_Missing", func(t *testing.T) {
-		ctx := context.Background()
-		_, ok := GetTransactionID(ctx)
-		assert.False(t, ok)
+	t.Run("UserIP", func(t *testing.T) {
+		userIP := "127.0.0.1"
+		ctx = WithUserIP(ctx, userIP)
+		got, ok := GetUserIP(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, userIP, got)
+	})
+
+	t.Run("WithCustomFields", func(t *testing.T) {
+		key := "custom-key"
+		val := "custom-value"
+		ctx = WithCustomFields(ctx, key, val)
+
+		// Verify with GetFieldValueFromContext
+		got, ok := GetFieldValueFromContext[string](ctx, key)
+		assert.True(t, ok)
+		assert.Equal(t, val, got)
+	})
+
+	t.Run("GetAllFieldsFromContext", func(t *testing.T) {
+		fields := GetAllFieldsFromContext(ctx)
+		assert.Equal(t, "trx-123", fields["nvx_transaction_id"])
+		assert.Equal(t, "merc-456", fields["nvx_merchant_id"])
+		assert.Equal(t, "req-789", fields["nvx_request_id"])
+		assert.Equal(t, "user-001", fields["nvx_user_id"])
+		assert.Equal(t, "admin", fields["nvx_user_type"])
+		assert.Equal(t, "127.0.0.1", fields["nvx_user_ip"])
 	})
 }
 
-func TestGetFields(t *testing.T) {
-	t.Run("All fields present", func(t *testing.T) {
-		ctx := NewContext("create_user")
-		ctx = WithClientID(ctx, "client-001")
-		ctx = WithRequestID(ctx, "req-001")
-		ctx = WithPayload(ctx, "test-payload")
-		ctx = WithResult(ctx, "test-result")
+func TestGetFieldValueFromContext(t *testing.T) {
+	ctx := context.Background()
 
-		fields := GetFields(ctx)
+	// Test with internal key (TransactionID is of type activity.key)
+	trxID := "trx-generic-123"
+	ctx = WithTransactionID(ctx, trxID)
 
-		assert.NotEmpty(t, fields["transaction_id"])
-		assert.Equal(t, "create_user", fields["action"])
-		assert.Equal(t, "client-001", fields["client_id"])
-		assert.Equal(t, "req-001", fields["request_id"])
-		assert.Equal(t, "test-payload", fields["payload"])
-		assert.Equal(t, "test-result", fields["result"])
-	})
+	got, ok := GetFieldValueFromContext[string](ctx, TransactionID)
+	assert.True(t, ok)
+	assert.Equal(t, trxID, got)
 
-	t.Run("Empty context", func(t *testing.T) {
-		ctx := context.Background()
-		fields := GetFields(ctx)
+	// Test with string key
+	keyStr := "my-string-key"
+	valStr := "my-value"
+	ctx = context.WithValue(ctx, keyStr, valStr)
 
-		assert.Len(t, fields, 2) // payload and result are always retrieved (nil if missing)
-		assert.Nil(t, fields["payload"])
-		assert.Nil(t, fields["result"])
-		assert.Nil(t, fields["transaction_id"])
-		assert.Nil(t, fields["action"])
-	})
+	gotStr, okStr := GetFieldValueFromContext[string](ctx, keyStr)
+	assert.True(t, okStr)
+	assert.Equal(t, valStr, gotStr)
+
+	// Test with explicit mismatched type
+	gotInt, okInt := GetFieldValueFromContext[int](ctx, keyStr)
+	assert.False(t, okInt)
+	assert.Equal(t, 0, gotInt)
 }
