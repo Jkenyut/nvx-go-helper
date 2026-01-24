@@ -209,7 +209,7 @@ func WithMessageData(ctx context.Context, message string, status int, data any) 
 
 func (r *Response) JSONMarshal() []byte {
 	if r.Meta.StatusCode == 0 {
-		r.Meta.StatusCode = 400
+		r.Meta.StatusCode = 200
 	}
 
 	resp, _ := json.Marshal(r)

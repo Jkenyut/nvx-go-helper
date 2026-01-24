@@ -176,3 +176,33 @@ func TestToString(t *testing.T) {
 
 	}
 }
+
+func TestToInt64(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    any
+		expected int64
+	}{
+		{"int", int(123), 123},
+		{"int8", int8(123), 123},
+		{"int16", int16(123), 123},
+		{"int32", int32(123), 123},
+		{"int64", int64(123), 123},
+		{"uint", uint(123), 123},
+		{"uint8", uint8(123), 123},
+		{"uint16", uint16(123), 123},
+		{"uint32", uint32(123), 123},
+		{"uint64", uint64(123), 123},
+		{"float32", float32(123.45), 123},
+		{"float64", float64(123.45), 123},
+		{"string valid", "123", 123},
+		{"string invalid", "abc", 0},
+		{"nil", nil, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, ToInt64(tt.input))
+		})
+	}
+}
