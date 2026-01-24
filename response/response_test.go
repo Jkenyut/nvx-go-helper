@@ -112,7 +112,7 @@ func TestResponse_JSONSerialization(t *testing.T) {
 }
 
 func TestResponse_WithMessage(t *testing.T) {
-	ctx := context.WithValue(context.Background(), activity.RequestIDKey, "test-12345")
+	ctx := context.WithValue(context.Background(), activity.RequestID, "test-12345")
 	resp := WithMessage(ctx, "user registered", 200)
 
 	data, _ := json.Marshal(resp)

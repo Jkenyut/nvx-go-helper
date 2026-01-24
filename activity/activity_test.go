@@ -18,12 +18,12 @@ func TestActivityContext(t *testing.T) {
 		assert.Equal(t, trxID, got)
 	})
 
-	t.Run("MerchantID", func(t *testing.T) {
-		merchantID := "merc-456"
-		ctx = WithMerchantID(ctx, merchantID)
-		got, ok := GetMerchantID(ctx)
+	t.Run("MerchantKey", func(t *testing.T) {
+		merchantKey := "merc-456"
+		ctx = WithMerchantKey(ctx, merchantKey)
+		got, ok := GetMerchantKey(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, merchantID, got)
+		assert.Equal(t, merchantKey, got)
 	})
 
 	t.Run("RequestID", func(t *testing.T) {
@@ -72,7 +72,7 @@ func TestActivityContext(t *testing.T) {
 	t.Run("GetAllFieldsFromContext", func(t *testing.T) {
 		fields := GetAllFieldsFromContext(ctx)
 		assert.Equal(t, "trx-123", fields["nvx_transaction_id"])
-		assert.Equal(t, "merc-456", fields["nvx_merchant_id"])
+		assert.Equal(t, "merc-456", fields["nvx_merchant_key"])
 		assert.Equal(t, "req-789", fields["nvx_request_id"])
 		assert.Equal(t, "user-001", fields["nvx_user_id"])
 		assert.Equal(t, "admin", fields["nvx_user_type"])

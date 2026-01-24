@@ -10,8 +10,8 @@ type key int
 // Context keys constants
 const (
 	TransactionID key = iota
-	MerchantID
-	RequestIDKey
+	MerchantKey
+	RequestID
 	UserID
 	UserType
 	UserIP
@@ -28,24 +28,24 @@ func GetTransactionID(ctx context.Context) (string, bool) {
 	return trxID, ok
 }
 
-func WithMerchantID(ctx context.Context, merchantID string) context.Context {
-	return context.WithValue(ctx, MerchantID, merchantID)
+func WithMerchantKey(ctx context.Context, merchantKey string) context.Context {
+	return context.WithValue(ctx, MerchantKey, merchantKey)
 }
 
-func GetMerchantID(ctx context.Context) (string, bool) {
-	merchantID, ok := ctx.Value(MerchantID).(string)
-	return merchantID, ok
+func GetMerchantKey(ctx context.Context) (string, bool) {
+	merchantKey, ok := ctx.Value(MerchantKey).(string)
+	return merchantKey, ok
 }
 
 // WithRequestID adds a request ID to the context.
 // Useful for distributed tracing.
 func WithRequestID(ctx context.Context, requestID string) context.Context {
-	return context.WithValue(ctx, RequestIDKey, requestID)
+	return context.WithValue(ctx, RequestID, requestID)
 }
 
 // GetRequestID retrieves the request ID from the context.
 func GetRequestID(ctx context.Context) (string, bool) {
-	requestID, ok := ctx.Value(RequestIDKey).(string)
+	requestID, ok := ctx.Value(RequestID).(string)
 	return requestID, ok
 }
 
@@ -96,8 +96,8 @@ func GetAllFieldsFromContext(ctx context.Context) map[string]interface{} {
 	}
 
 	// Add client_id if present
-	if merchantID, ok := GetMerchantID(ctx); ok {
-		fields["nvx_merchant_id"] = merchantID // from client
+	if merchantKey, ok := GetMerchantKey(ctx); ok {
+		fields["nvx_merchant_key"] = merchantKey // from client
 	}
 
 	if userID, ok := GetUserID(ctx); ok {
