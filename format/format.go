@@ -249,6 +249,40 @@ func ToString(v any) string {
 	}
 }
 
+func ToInt64(v any) int64 {
+	switch value := v.(type) {
+	case int:
+		return int64(value)
+	case int8:
+		return int64(value)
+	case int16:
+		return int64(value)
+	case int32:
+		return int64(value)
+	case int64:
+		return value
+	case uint:
+		return int64(value)
+	case uint8:
+		return int64(value)
+	case uint16:
+		return int64(value)
+	case uint32:
+		return int64(value)
+	case uint64:
+		return int64(value)
+	case float32:
+		return int64(value)
+	case float64:
+		return int64(value)
+	case string:
+		val, _ := strconv.ParseInt(value, 10, 64)
+		return val
+	default:
+		return 0
+	}
+}
+
 // ToSafeString converts any value to string and sanitizes it for use in
 // filenames, Redis keys, log context, URLs, etc.
 // Replaces spaces and dangerous characters (/ \ :) with underscores.
