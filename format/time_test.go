@@ -124,7 +124,7 @@ func TestIsZeroOrDefault(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, IsZeroOrDefault(tt.t))
+			assert.Equal(t, tt.want, tt.t.IsZero())
 		})
 	}
 }

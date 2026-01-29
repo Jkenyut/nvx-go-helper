@@ -1,3 +1,12 @@
+// Package worker provides a generic, concurrent worker pool implementation
+// with cancellation, timeouts, and ordered result streaming.
+//
+// It is designed for processing large batches of jobs (e.g., CSV imports,
+// data migrations, bulk API calls) where:
+//   - Concurrency is needed for speed
+//   - Results must be mapped 1:1 to inputs
+//   - Global and per-job timeouts are required
+//   - Panics must be caught safely
 package worker
 
 import (
@@ -8,31 +17,44 @@ import (
 )
 
 // Job represents a generic job input.
+// T is the type of data to be processed.
 type Job[T any] struct {
-	ID   int // Unique identifier
-	Data T   // Payload
+	ID   int // Unique identifier (usually index) to map result back to input
+	Data T   // Payload to be processed
 }
 
 // Result represents the output of processing a Job.
+// R is the type of the result value.
 type Result[R any] struct {
-	ID    int   // Matches Job.ID
-	Value R     // Success result
-	Err   error // Error result
+	ID    int   // Matches Job.ID, allowing O(1) correlation
+	Value R     // Success result (if any)
+	Err   error // Error result (if any) or panic error
 }
 
-// WorkerPoolConfig holds configuration options.
+// WorkerPoolConfig holds configuration options for the worker pool.
 type WorkerPoolConfig struct {
-	NumWorkers    int           // Concurrent workers (default: 2)
-	WorkerTimeout time.Duration // Per-job timeout (default: 15s)
-	GlobalTimeout time.Duration // Global pool timeout (default: 30s)
-	StopOnError   bool          // Cancel all on first error
+	NumWorkers    int           // Concurrent workers count (default: 2)
+	WorkerTimeout time.Duration // Timeout for a single job execution (default: 15s)
+	GlobalTimeout time.Duration // Total timeout for the entire batch (default: 30s)
+	StopOnError   bool          // If true, the pool shuts down on the first error
 }
 
-// ErrSkipped indicates a job was not processed.
+// ErrSkipped indicates a job was not processed because the pool was cancelled/timed out,
+// or a previous job failed (if StopOnError is true).
 var ErrSkipped = fmt.Errorf("job not processed (cancelled or skipped)")
 
-// RunGenericWorkerPoolStream executes jobs concurrently and streams results.
-// It guarantees 1:1 result mapping for every job ID.
+// RunGenericWorkerPoolStream executes a batch of jobs concurrently and streams results.
+//
+// Key features:
+//   - **Ordered Results**: Results are NOT guaranteed to be in order, but each Result contains the ID of the source Job.
+//   - **Concurrency Control**: Use cfg.NumWorkers to limit parallelism.
+//   - **Timeouts**: Enforces both GlobalTimeout (whole batch) and WorkerTimeout (per item).
+//   - **Safety**: Recovers from panics in worker function to prevent crash.
+//
+// The workerFunc must accept a context (which respects timeouts) and the job data.
+// It returns the result R and an error.
+//
+// Returns a read-only channel of Results. The channel is closed when all jobs are finished or timed out.
 func RunGenericWorkerPoolStream[T any, R any](
 	ctx context.Context,
 	jobs []Job[T],

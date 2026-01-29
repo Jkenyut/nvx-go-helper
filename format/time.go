@@ -1,94 +1,205 @@
 // Package format provides safe, reusable formatting utilities for time, currency, phone numbers, etc.
 //
+// Key principles:
 //   - All dates in database → UTC
 //   - All dates shown to users → WIB (UTC+7)
-//   - Never use time.Local (unpredictable on servers)
-//   - Always use fixed zones (zero external dependency)
+//   - Zero dependencies (standard library only)
 package format
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
 
 // =============================================================================
-// TIMEZONE DEFINITIONS (UTC+7)
+// TIMEZONE DEFINITIONS
 // =============================================================================
+
 var (
-	// UTC location
+	// UTC is the standard time location for storage and internal logic.
 	UTC = time.UTC
 
-	// WIB (UTC+7) — no daylight saving
-	WIB     = time.FixedZone("Asia/Jakarta", 7*60*60)
-	Jakarta = WIB                                     // most commonly used alias
-	Bangkok = time.FixedZone("Asia/Bangkok", 7*60*60) // same offset as WIB
+	// WIB (Waktu Indonesia Barat) is UTC+7. Used for display to users in Western Indonesia.
+	// It is a fixed zone with no daylight saving time.
+	WIB = time.FixedZone("Asia/Jakarta", 7*60*60)
+
+	// Jakarta is an alias for WIB.
+	Jakarta = WIB
+
+	// Bangkok is UTC+7, same offset as WIB but distinct location.
+	Bangkok = time.FixedZone("Asia/Bangkok", 7*60*60)
 )
 
 // =============================================================================
 // COMMON DATE/TIME LAYOUTS
 // =============================================================================
+
 const (
-	LayoutISO         = "2006-01-02T15:04:05Z07:00" // ISO with offset
-	LayoutRFC3339WIB  = "2006-01-02T15:04:05+07:00" // RFC3339 with +07:00
-	LayoutDateTimeSec = "2006-01-02 15:04:05"       // 31-12-2025 14:30:45
-	LayoutDate        = "2006-01-02"                // 31-12-2025
+	// LayoutISO is the standard RFC3339 format (e.g., "2006-01-02T15:04:05Z").
+	LayoutISO = time.RFC3339
+
+	// LayoutRFC3339WIB is RFC3339 with a fixed +07:00 offset.
+	LayoutRFC3339WIB = "2006-01-02T15:04:05+07:00"
+
+	// LayoutDateTimeSec is a SQL-friendly format "YYYY-MM-DD HH:MM:SS".
+	LayoutDateTimeSec = "2006-01-02 15:04:05"
+
+	// LayoutDate is just the date "YYYY-MM-DD".
+	LayoutDate = "2006-01-02"
 )
 
 // =============================================================================
-// CORE TIME FUNCTIONS
+// NOW HELPERS
 // =============================================================================
 
 // NowUTC returns the current time in UTC.
-// Use this for: database storage, logging, API contracts, caching keys.
-func NowUTC() time.Time {
-	return time.Now().UTC()
-}
+// Use this for database timestamps and internal logic.
+func NowUTC() time.Time { return time.Now().UTC() }
 
 // NowWIB returns the current time in WIB (UTC+7).
-// Use this for displaying time to users in that timezone.
-func NowWIB() time.Time {
-	return time.Now().In(WIB)
-}
+// Use this for display purposes or business logic specific to Indonesia time.
+func NowWIB() time.Time { return time.Now().In(WIB) }
 
-// Now returns current time in UTC (default for all internal systems).
-func Now() time.Time {
-	return NowUTC()
-}
+// Now returns the current time in UTC (default safe choice).
+func Now() time.Time { return NowUTC() }
 
-// ToWIB converts any time.Time to WIB (UTC+7).
-func ToWIB(t time.Time) time.Time {
-	return t.In(WIB)
-}
+// =============================================================================
+// CONVERSIONS
+// =============================================================================
 
-// ToUTC converts any time.Time to UTC.
-func ToUTC(t time.Time) time.Time {
-	return t.UTC()
-}
+// ToWIB converts a time to WIB (UTC+7).
+func ToWIB(t time.Time) time.Time { return t.In(WIB) }
 
-// FormatWIB formats a time in WIB zone using the given layout.
+// ToUTC converts a time to UTC.
+func ToUTC(t time.Time) time.Time { return t.UTC() }
+
+// =============================================================================
+// FORMATTERS
+// =============================================================================
+
+// FormatWIB formats a time in WIB using the specified layout.
+// Returns an empty string if the time is zero.
 func FormatWIB(t time.Time, layout string) string {
+	if t.IsZero() {
+		return ""
+	}
 	return t.In(WIB).Format(layout)
 }
 
-// FormatUTC formats a time in UTC zone using the given layout.
+// FormatUTC formats a time in UTC using the specified layout.
+// Returns an empty string if the time is zero.
 func FormatUTC(t time.Time, layout string) string {
+	if t.IsZero() {
+		return ""
+	}
 	return t.UTC().Format(layout)
 }
 
-// ParseRFC3339Safe safely parses an RFC3339 string.
-// Returns zero time + nil error if input is empty or represents a zero/default date.
+// =============================================================================
+// PARSERS
+// =============================================================================
+
+// ParseRFC3339Safe parses RFC3339 safely.
+// Empty or zero date returns zero time without error.
 func ParseRFC3339Safe(s string) (time.Time, error) {
-	// Clean input
 	s = strings.TrimSpace(s)
-	// Check for empty or zero values
-	if s == "" || s == "0001-01-01T00:00:00Z" || strings.HasPrefix(s, "0001-01-01") {
-		return time.Time{}, nil // represents "no value"
+	if s == "" || strings.HasPrefix(s, "0001-01-01") {
+		return time.Time{}, nil
 	}
-	// Parse with standard RFC3339
 	return time.Parse(time.RFC3339, s)
 }
 
-// IsZeroOrDefault returns true if the time is zero or MySQL's default zero date.
-func IsZeroOrDefault(t time.Time) bool {
-	return t.IsZero() || t.Format("2006-01-02") == "0001-01-01"
+// =============================================================================
+// STRING → TIME (STRICT)
+// =============================================================================
+
+// StringToDateTimeSecWIB parses "YYYY-MM-DD HH:MM:SS" as WIB.
+// Returns an error if parsing fails or input is empty.
+func StringToDateTimeSecWIB(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty datetime")
+	}
+	return time.ParseInLocation(LayoutDateTimeSec, s, WIB)
+}
+
+// StringToDateTimeSecUTC parses "YYYY-MM-DD HH:MM:SS" as UTC.
+// Returns an error if parsing fails or input is empty.
+func StringToDateTimeSecUTC(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty datetime")
+	}
+	return time.ParseInLocation(LayoutDateTimeSec, s, UTC)
+}
+
+// StringToDateWIB parses "YYYY-MM-DD" as WIB.
+// Returns an error if parsing fails or input is empty.
+func StringToDateWIB(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty date")
+	}
+	return time.ParseInLocation(LayoutDate, s, WIB)
+}
+
+// StringToDateUTC parses "YYYY-MM-DD" as UTC.
+// Returns an error if parsing fails or input is empty.
+func StringToDateUTC(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty date")
+	}
+	return time.ParseInLocation(LayoutDate, s, UTC)
+}
+
+// =============================================================================
+// STRING → TIME (FORGIVING)
+// =============================================================================
+
+// StringToDateTimeSecWIBOrZero parses "YYYY-MM-DD HH:MM:SS" as WIB.
+// Returns zero time if parsing fails or input is empty.
+func StringToDateTimeSecWIBOrZero(s string) time.Time {
+	t, _ := StringToDateTimeSecWIB(s)
+	return t
+}
+
+// StringToDateTimeSecUTCOrZero parses "YYYY-MM-DD HH:MM:SS" as UTC.
+// Returns zero time if parsing fails or input is empty.
+func StringToDateTimeSecUTCOrZero(s string) time.Time {
+	t, _ := StringToDateTimeSecUTC(s)
+	return t
+}
+
+// StringToDateWIBOrZero parses "YYYY-MM-DD" as WIB.
+// Returns zero time if parsing fails or input is empty.
+func StringToDateWIBOrZero(s string) time.Time {
+	t, _ := StringToDateWIB(s)
+	return t
+}
+
+// StringToDateUTCOrZero parses "YYYY-MM-DD" as UTC.
+// Returns zero time if parsing fails or input is empty.
+func StringToDateUTCOrZero(s string) time.Time {
+	t, _ := StringToDateUTC(s)
+	return t
+}
+
+// =============================================================================
+// TIME → STRING
+// =============================================================================
+
+// ToDateTimeSecString formats the time as "YYYY-MM-DD HH:MM:SS".
+// Returns empty string if time is zero.
+func ToDateTimeSecString(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(LayoutDateTimeSec)
+}
+
+// ToDateString formats the time as "YYYY-MM-DD".
+// Returns empty string if time is zero.
+func ToDateString(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(LayoutDate)
 }
