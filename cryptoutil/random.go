@@ -30,6 +30,9 @@ package cryptoutil
 
 import (
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
 	"math/big"
 )
 
@@ -108,4 +111,85 @@ func stringWithCharset(length int, charset string) string {
 	}
 	// Convert byte slice to string and return
 	return string(b)
+}
+
+// GenerateKey generates a cryptographically secure random key.
+//
+// Parameters:
+//   - length: Key length in bytes (e.g., 32 for 256-bit key)
+//
+// Returns base64-encoded key string and error.
+//
+// Example:
+//
+//	key, err := GenerateKey(32)  // 256-bit key
+//	if err != nil {
+//	    panic(err)
+//	}
+//	fmt.Println(key)  // "Q3J5cHRvR3JhcGhpY2FsbHlTZWN1cmVLZXk="
+func GenerateKey(length uint32) (string, error) {
+	if length <= 0 {
+		return "", fmt.Errorf("key length must be positive, got %d", length)
+	}
+
+	key := make([]byte, length)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("generate random key: %w", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(key), nil
+}
+
+// GenerateKeyHex generates a cryptographically secure random key in hex format.
+//
+// Parameters:
+//   - length: Key length in bytes
+//
+// Returns hex-encoded key string and error.
+//
+// Example:
+//
+//	key, err := GenerateKeyHex(32)  // 64 character hex string
+//	if err != nil {
+//	    panic(err)
+//	}
+//	fmt.Println(key)  // "a1b2c3d4e5f6..."
+func GenerateKeyHex(length uint32) (string, error) {
+	if length <= 0 {
+		return "", fmt.Errorf("key length must be positive, got %d", length)
+	}
+
+	key := make([]byte, length)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("generate random key: %w", err)
+	}
+
+	return hex.EncodeToString(key), nil
+}
+
+// GenerateKeyRaw generates a cryptographically secure random key as raw bytes.
+//
+// Parameters:
+//   - length: Key length in bytes
+//
+// Returns raw byte slice and error.
+//
+// Example:
+//
+//	key, err := GenerateKeyRaw(32)
+//	if err != nil {
+//	    panic(err)
+//	}
+//	fmt.Printf("Generated %d bytes\n", len(key))
+func GenerateKeyRaw(length uint32) ([]byte, error) {
+	if length <= 0 {
+		return nil, fmt.Errorf("key length must be positive, got %d", length)
+	}
+
+	key := make([]byte, length)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("generate random key: %w", err)
+	}
+
+	return key, nil
 }

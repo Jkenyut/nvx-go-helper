@@ -1,5 +1,5 @@
 // Package format provides essential, production-grade utility functions
-// using ONLY the Go standard library (2025 best practice).
+// using ONLY the Go standard library (best practice).
 //
 // No external dependencies → smaller binary, faster build, zero supply-chain risk.
 //

@@ -1,7 +1,7 @@
 // Package pagination provides a robust, production-ready, and highly reusable
 // pagination system for REST APIs.
 //
-// Features (2025 enterprise standard):
+// Features (enterprise standard):
 //   - Cursor-based & offset-based support
 //   - Automatic limit clamping (max 100)
 //   - Safe defaults (page=1, limit=10)

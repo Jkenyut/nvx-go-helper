@@ -1,7 +1,7 @@
 // Package response provides a unified, predictable, and production-ready JSON API response
 // format used across all services in the organization.
 //
-// Key design principles (2025 enterprise standard):
+// Key design principles (enterprise standard):
 //   - Meta and Data are strictly separated → predictable parsing on frontend/mobile
 //   - request_id is taken from context (middleware) → full end-to-end tracing
 //   - All messages are lowercase → clean, professional, no screaming TITLE CASE

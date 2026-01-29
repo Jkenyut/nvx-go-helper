@@ -1,6 +1,8 @@
 package cryptoutil
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"strings"
 	"testing"
 
@@ -67,4 +69,53 @@ func TestStringWithCharset(t *testing.T) {
 	for _, r := range s {
 		assert.True(t, strings.ContainsRune(charset, r), "Character %c not in charset", r)
 	}
+}
+
+func TestGenerateKey(t *testing.T) {
+	t.Run("GenerateKey (Base64)", func(t *testing.T) {
+		lenBytes := uint32(32)
+		key, err := GenerateKey(lenBytes)
+		assert.NoError(t, err)
+
+		decoded, err := base64.StdEncoding.DecodeString(key)
+		assert.NoError(t, err)
+		assert.Len(t, decoded, int(lenBytes))
+	})
+
+	t.Run("GenerateKey Invalid Length", func(t *testing.T) {
+		_, err := GenerateKey(0)
+		assert.Error(t, err)
+	})
+}
+
+func TestGenerateKeyHex(t *testing.T) {
+	t.Run("GenerateKeyHex", func(t *testing.T) {
+		lenBytes := uint32(32)
+		key, err := GenerateKeyHex(lenBytes)
+		assert.NoError(t, err)
+
+		decoded, err := hex.DecodeString(key)
+		assert.NoError(t, err)
+		assert.Len(t, decoded, int(lenBytes))
+		assert.Len(t, key, int(lenBytes)*2) // Hex string is 2x length
+	})
+
+	t.Run("GenerateKeyHex Invalid Length", func(t *testing.T) {
+		_, err := GenerateKeyHex(0)
+		assert.Error(t, err)
+	})
+}
+
+func TestGenerateKeyRaw(t *testing.T) {
+	t.Run("GenerateKeyRaw", func(t *testing.T) {
+		lenBytes := uint32(32)
+		key, err := GenerateKeyRaw(lenBytes)
+		assert.NoError(t, err)
+		assert.Len(t, key, int(lenBytes))
+	})
+
+	t.Run("GenerateKeyRaw Invalid Length", func(t *testing.T) {
+		_, err := GenerateKeyRaw(0)
+		assert.Error(t, err)
+	})
 }
