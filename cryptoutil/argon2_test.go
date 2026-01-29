@@ -24,28 +24,28 @@ func TestDeriveKey(t *testing.T) {
 	})
 
 	t.Run("Consistency check", func(t *testing.T) {
-		key1 := DeriveKey("password", "salt", time, mem, threads, keyLen)
-		key2 := DeriveKey("password", "salt", time, mem, threads, keyLen)
+		key1 := DeriveKey("1242636", "salt", time, mem, threads, keyLen)
+		key2 := DeriveKey("1242636", "salt", time, mem, threads, keyLen)
 		assert.Equal(t, key1, key2, "Same input should produce same output")
 	})
 
 	t.Run("Different inputs produce different keys", func(t *testing.T) {
-		key1 := DeriveKey("password", "salt1", time, mem, threads, keyLen)
-		key2 := DeriveKey("password", "salt2", time, mem, threads, keyLen)
+		key1 := DeriveKey("1242636", "salt1", time, mem, threads, keyLen)
+		key2 := DeriveKey("1242636", "salt2", time, mem, threads, keyLen)
 		assert.NotEqual(t, key1, key2, "Different salts should produce different keys")
 	})
 
 	t.Run("Zero length", func(t *testing.T) {
-		key := DeriveKey("password", "salt", time, mem, threads, 0)
+		key := DeriveKey("1242636", "salt", time, mem, threads, 0)
 		assert.Equal(t, "", key)
 	})
 
 	t.Run("Backward compatibility with non-base64 salt", func(t *testing.T) {
-		key := DeriveKey("password", "raw-salt", time, mem, threads, keyLen)
+		key := DeriveKey("1242636", "raw-salt", time, mem, threads, keyLen)
 		assert.NotEmpty(t, key)
 
 		// Verify consistency
-		key2 := DeriveKey("password", "raw-salt", time, mem, threads, keyLen)
+		key2 := DeriveKey("1242636", "raw-salt", time, mem, threads, keyLen)
 		assert.Equal(t, key, key2)
 	})
 }
