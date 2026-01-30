@@ -18,12 +18,12 @@ func TestActivityContext(t *testing.T) {
 		assert.Equal(t, trxID, got)
 	})
 
-	t.Run("MerchantKey", func(t *testing.T) {
-		merchantKey := "merc-456"
-		ctx = WithMerchantKey(ctx, merchantKey)
-		got, ok := GetMerchantKey(ctx)
+	t.Run("APIKey", func(t *testing.T) {
+		apiKey := "api-456"
+		ctx = WithAPIKey(ctx, apiKey)
+		got, ok := GetAPIKey(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, merchantKey, got)
+		assert.Equal(t, apiKey, got)
 	})
 
 	t.Run("RequestID", func(t *testing.T) {
