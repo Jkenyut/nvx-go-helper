@@ -311,17 +311,3 @@ func ToSafeString(v any) string {
 	}
 	return s
 }
-
-// Timestamp formats a time.Time value as a Unix timestamp string.
-// Returns empty string if input is zero time.
-//
-// Example:
-//
-//	Timestamp(time.Now()) // "1633072800"
-//	Timestamp(time.Time{}) // ""
-func Timestamp(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return fmt.Sprintf("%d", t.Unix())
-}
