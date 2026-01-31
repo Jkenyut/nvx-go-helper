@@ -5,6 +5,8 @@
 package validator
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/go-playground/validator/v10"
@@ -44,4 +46,26 @@ func Struct(s any) error {
 //	err := validator.Var(email, "required,email")
 func Var(field any, tag string) error {
 	return Get().Var(field, tag)
+}
+
+// GetErrors returns the validation errors from a validator error.
+func GetErrors(err error) validator.ValidationErrors {
+	return err.(validator.ValidationErrors)
+}
+
+// GetErrorStr returns the first validation error from a validator error.
+func GetErrorStr(err error) string {
+	if err == nil {
+		return ""
+	}
+	errors := GetErrors(err)
+	if len(errors) == 0 {
+		return ""
+	}
+
+	var result = make([]string, len(errors))
+	for i, e := range errors {
+		result[i] = fmt.Sprintf("%s: %s", e.Field(), e.Error())
+	}
+	return strings.Join(result, ", ")
 }
