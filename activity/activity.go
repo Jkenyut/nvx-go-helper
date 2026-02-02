@@ -20,7 +20,7 @@ type key int
 // Context keys constants
 const (
 	TransactionID key = iota
-	MerchantKey
+	APIKey
 	RequestID
 	UserID
 	UserType
@@ -40,15 +40,15 @@ func GetTransactionID(ctx context.Context) (string, bool) {
 	return trxID, ok
 }
 
-// WithMerchantKey adds a merchant key to the context.
-func WithMerchantKey(ctx context.Context, merchantKey string) context.Context {
-	return context.WithValue(ctx, MerchantKey, merchantKey)
+// WithAPIKey adds a merchant key to the context.
+func WithAPIKey(ctx context.Context, apiKey string) context.Context {
+	return context.WithValue(ctx, APIKey, apiKey)
 }
 
-// GetMerchantKey retrieves the merchant key from the context.
-func GetMerchantKey(ctx context.Context) (string, bool) {
-	merchantKey, ok := ctx.Value(MerchantKey).(string)
-	return merchantKey, ok
+// GetAPIKey retrieves the merchant key from the context.
+func GetAPIKey(ctx context.Context) (string, bool) {
+	apiKey, ok := ctx.Value(APIKey).(string)
+	return apiKey, ok
 }
 
 // WithRequestID adds a request ID to the context.
@@ -119,8 +119,8 @@ func GetAllFieldsFromContext(ctx context.Context) map[string]interface{} {
 	}
 
 	// Add client_id if present
-	if merchantKey, ok := GetMerchantKey(ctx); ok {
-		fields["nvx_merchant_key"] = merchantKey // from client
+	if apiKey, ok := GetAPIKey(ctx); ok {
+		fields["nvx_api_key"] = apiKey // from client
 	}
 
 	if userID, ok := GetUserID(ctx); ok {

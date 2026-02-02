@@ -5,6 +5,9 @@
 package validator
 
 import (
+	"fmt"
+	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/go-playground/validator/v10"
@@ -22,8 +25,16 @@ func Get() *validator.Validate {
 	// even if called concurrently from multiple goroutines.
 	once.Do(func() {
 		validate = validator.New()
-		// You can register custom validation tags here in the future
-		// e.g., validate.RegisterValidation("sku", validateSKU)
+
+		// RegisterTagNameFunc registers a function to get the tag name from the struct field.
+		// This is used to return the JSON tag name in validation errors.
+		validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+			name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
+			if name == "-" {
+				return ""
+			}
+			return name
+		})
 	})
 	return validate
 }
@@ -44,4 +55,58 @@ func Struct(s any) error {
 //	err := validator.Var(email, "required,email")
 func Var(field any, tag string) error {
 	return Get().Var(field, tag)
+}
+
+// GetErrors returns the validation errors from a validator error.
+func GetErrors(err error) validator.ValidationErrors {
+	if err == nil {
+		return nil
+	}
+	if errs, ok := err.(validator.ValidationErrors); ok {
+		return errs
+	}
+	return nil
+}
+
+// GetErrorsFullStr returns the full validation errors from a validator error.
+func GetErrorsFullStr(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var errors validator.ValidationErrors
+	errors, ok := err.(validator.ValidationErrors)
+	if !ok {
+		return ""
+	}
+
+	if len(errors) == 0 {
+		return ""
+	}
+
+	var result = make([]string, len(errors))
+	for i, e := range errors {
+		result[i] = fmt.Sprintf("%s: %s", e.Field(), e.Tag())
+	}
+	return strings.Join(result, ", ")
+}
+
+// GetErrorFirstStr returns the first validation error from a validator error.
+func GetErrorFirstStr(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var errors validator.ValidationErrors
+	errors, ok := err.(validator.ValidationErrors)
+	if !ok {
+		return ""
+	}
+
+	if len(errors) == 0 {
+		return ""
+	}
+
+	errArr := errors[0]
+	return fmt.Sprintf("%s: %s", errArr.Field(), errArr.Tag())
 }

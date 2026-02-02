@@ -8,6 +8,7 @@ package format
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -182,6 +183,24 @@ func StringToDateUTCOrZero(s string) time.Time {
 	return t
 }
 
+// string to unix timestamp
+func StringToUnix(tsString string) (time.Time, error) {
+	sec, err := strconv.ParseInt(tsString, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid number: %w", err)
+	}
+
+	return time.Unix(sec, 0).UTC(), nil
+}
+
+// StringToUnixOrZero parses a string to a time.Time value.
+// It expects the input string to be a Unix timestamp.
+// It returns zero time if the input string is not a valid number.
+func StringToUnixOrZero(tsString string) time.Time {
+	t, _ := StringToUnix(tsString)
+	return t
+}
+
 // =============================================================================
 // TIME → STRING
 // =============================================================================
@@ -202,4 +221,18 @@ func ToDateString(t time.Time) string {
 		return ""
 	}
 	return t.Format(LayoutDate)
+}
+
+// Timestamp formats a time.Time value as a Unix timestamp string.
+// Returns empty string if input is zero time.
+//
+// Example:
+//
+//	Timestamp(time.Now()) // "1633072800"
+//	Timestamp(time.Time{}) // ""
+func Timestamp(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf("%d", t.Unix())
 }
