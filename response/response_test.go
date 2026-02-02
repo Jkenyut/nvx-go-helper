@@ -47,6 +47,8 @@ func TestSuccessResponses(t *testing.T) {
 		{"Created", func(c context.Context) Response { return Created(c, "created", nil) }, 201, "created", false},
 		{"Accepted", func(c context.Context) Response { return Accepted(c, "accepted", nil) }, 202, "accepted", false},
 		{"NoContent", func(c context.Context) Response { return NoContent(c) }, 204, "no content", false},
+		{"ResetContent", func(c context.Context) Response { return ResetContent(c) }, 205, "reset content", false},
+		{"PartialContent", func(c context.Context) Response { return PartialContent(c, "partial", "data") }, 206, "partial", true},
 		{"Success format", func(c context.Context) Response { return Success(c, "payload") }, 200, "success", true},
 	}
 
@@ -84,6 +86,30 @@ func TestErrorResponses(t *testing.T) {
 		"BadGateway":           func(c context.Context) Response { return BadGateway(c, "bad gateway") },
 		"ServiceUnavailable":   func(c context.Context) Response { return ServiceUnavailable(c, "service unavailable") },
 		"GatewayTimeout":       func(c context.Context) Response { return GatewayTimeout(c, "gateway timeout") },
+		"PaymentRequired":      func(c context.Context) Response { return PaymentRequired(c, "payment required") },
+		"LengthRequired":       func(c context.Context) Response { return LengthRequired(c, "length required") },
+		"URITooLong":           func(c context.Context) Response { return URITooLong(c, "uri too long") },
+		"RangeNotSatisfiable":  func(c context.Context) Response { return RangeNotSatisfiable(c, "range not satisfiable") },
+		"ExpectationFailed":    func(c context.Context) Response { return ExpectationFailed(c, "expectation failed") },
+		"Teapot":               func(c context.Context) Response { return Teapot(c, "i'm a teapot") },
+		"MisdirectedRequest":   func(c context.Context) Response { return MisdirectedRequest(c, "misdirected request") },
+		"Locked":               func(c context.Context) Response { return Locked(c, "locked") },
+		"FailedDependency":     func(c context.Context) Response { return FailedDependency(c, "failed dependency") },
+		"UpgradeRequired":      func(c context.Context) Response { return UpgradeRequired(c, "upgrade required") },
+		"RequestHeaderFieldsTooLarge": func(c context.Context) Response {
+			return RequestHeaderFieldsTooLarge(c, "request header fields too large")
+		},
+		"UnavailableForLegalReasons": func(c context.Context) Response {
+			return UnavailableForLegalReasons(c, "unavailable for legal reasons")
+		},
+		"HTTPVersionNotSupported": func(c context.Context) Response { return HTTPVersionNotSupported(c, "http version not supported") },
+		"VariantAlsoNegotiates":   func(c context.Context) Response { return VariantAlsoNegotiates(c, "variant also negotiates") },
+		"InsufficientStorage":     func(c context.Context) Response { return InsufficientStorage(c, "insufficient storage") },
+		"LoopDetected":            func(c context.Context) Response { return LoopDetected(c, "loop detected") },
+		"NotExtended":             func(c context.Context) Response { return NotExtended(c, "not extended") },
+		"NetworkAuthenticationRequired": func(c context.Context) Response {
+			return NetworkAuthenticationRequired(c, "network authentication required")
+		},
 	}
 
 	for name, fn := range errorFuncs {
