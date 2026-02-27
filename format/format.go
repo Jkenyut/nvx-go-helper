@@ -1,5 +1,5 @@
 // Package format provides essential, production-grade utility functions
-// using ONLY the Go standard library (2025 best practice).
+// using ONLY the Go standard library (best practice).
 //
 // No external dependencies → smaller binary, faster build, zero supply-chain risk.
 //
@@ -249,6 +249,9 @@ func ToString(v any) string {
 	}
 }
 
+// ToInt64 attempts to convert any compatible value to int64.
+// Supports all integer types, floats (truncated), and strings (parsed).
+// Returns 0 if conversion fails or type is unsupported.
 func ToInt64(v any) int64 {
 	switch value := v.(type) {
 	case int:

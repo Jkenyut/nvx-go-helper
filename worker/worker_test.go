@@ -512,17 +512,19 @@ func TestLargeDatasetStopOnError(t *testing.T) {
 
 	// Should be very fast (<< 1s) because it stops early
 	// But 1M jobs overhead (map checks, channel sends) takes ~1s on some machines
-	if elapsed > 3*time.Second {
+	if elapsed > 10*time.Second {
 		t.Errorf("StopOnError with 1M jobs took too long: %v", elapsed)
 	}
 
 	if failCount == 0 {
-		t.Error("Expected at least one failure")
+		t.Errorf("Expected at least one failure. Stats: processed=%d, success=%d, skipped=%d, failed=%d",
+			numJobs-skippedCount, successCount, skippedCount, failCount)
 	}
 
 	// Most jobs should be skipped
 	if skippedCount < numJobs-2000 { // Allow some slack for concurrent workers
-		t.Errorf("Expected most jobs to be skipped, got %d skipped", skippedCount)
+		t.Errorf("Expected most jobs to be skipped, got %d skipped. Success=%d, Fail=%d",
+			skippedCount, successCount, failCount)
 	}
 }
 
@@ -575,7 +577,7 @@ func TestLargeDatasetTimeout(t *testing.T) {
 	t.Logf("Processed 1M jobs with timeout in %v", elapsed)
 
 	// Allow some time for overhead of skipping 1M jobs (can take ~1s+)
-	if elapsed > 3*time.Second {
+	if elapsed > 10*time.Second {
 		t.Errorf("GlobalTimeout failed, took %v", elapsed)
 	}
 

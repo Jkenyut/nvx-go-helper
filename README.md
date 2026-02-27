@@ -1,6 +1,6 @@
 # NVX Go Helper
 
-**nvx-go-helper** is a collection of **production-grade** utility functions designed to accelerate backend service development in Go (Golang). This library is built according to 2025 enterprise standards.
+**nvx-go-helper** is a collection of **production-grade** utility functions designed to accelerate backend service development in Go (Golang). This library is built according to  enterprise standards.
 
 **Key Design Principles:**
 - **Zero dependencies** (for most packages; explicitly kept minimal).

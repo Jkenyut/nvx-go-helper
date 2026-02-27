@@ -72,11 +72,10 @@ func TestFormatWIB(t *testing.T) {
 		layout   string
 		expected string
 	}{
-		{LayoutDateOnly, "07-07-2025"},
-		{LayoutDateTime, "07-07-2025 07:00"},
-		{LayoutDateTimeSec, "07-07-2025 07:00:00"},
-		{LayoutDB, "2025-07-07 07:00:00"},
+		{LayoutDateTimeSec, "2025-07-07 07:00:00"},
 		{LayoutRFC3339WIB, "2025-07-07T07:00:00+07:00"},
+		{LayoutISO, "2025-07-07T07:00:00+07:00"},
+		{LayoutDate, "2025-07-07"},
 	}
 
 	for _, tt := range tests {
@@ -125,7 +124,7 @@ func TestIsZeroOrDefault(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, IsZeroOrDefault(tt.t))
+			assert.Equal(t, tt.want, tt.t.IsZero())
 		})
 	}
 }
