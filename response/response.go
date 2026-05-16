@@ -25,7 +25,8 @@ package response
 
 import (
 	"context"
-	"encoding/json"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/Jkenyut/nvx-go-helper/activity"
 	"github.com/Jkenyut/nvx-go-helper/cryptoutil"
@@ -53,7 +54,7 @@ type Response struct {
 func NewMeta(ctx context.Context, success bool, message string, status int) Meta {
 	// Try to get request ID from context
 	reqID, _ := activity.GetRequestID(ctx)
-	// If not found, generate a new random UUID v4
+	// If not found, generate a new random UUID v7
 	if reqID == "" {
 		reqID = cryptoutil.V7()
 	}
@@ -312,11 +313,27 @@ func WithMessageData(ctx context.Context, message string, status int, data any) 
 	return Response{Meta: NewMeta(ctx, success, message, status), Data: data}
 }
 
-func (r *Response) JSONMarshal() []byte {
+func (r Response) JSONMarshal() []byte {
 	if r.Meta.StatusCode == 0 {
 		r.Meta.StatusCode = 200
 	}
 
-	resp, _ := json.Marshal(r)
+	resp, err := sonic.Marshal(r)
+	if err != nil {
+		// Fallback for panic prevention: if the user provided an unmarshalable Data type (like func or chan),
+		// we return a standard internal server error JSON format directly to prevent crashing or returning nil.
+		fallback := Response{
+			Meta: Meta{
+				Success:    false,
+				Message:    "internal server error: failed to marshal response data",
+				StatusCode: 500,
+				RequestID:  r.Meta.RequestID, // Preserve the request ID for tracing
+			},
+			Data: nil,
+		}
+		fallbackResp, _ := sonic.Marshal(fallback)
+		return fallbackResp
+	}
+
 	return resp
 }

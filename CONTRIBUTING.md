@@ -1,44 +1,97 @@
-# Contributing to nvx-go-helper
+# Contributing to nvx-go-driver
 
-First off, thanks for taking the time to contribute!
+First off, thank you for considering contributing to **nvx-go-driver**! We welcome improvements, bug fixes, and new features. By participating in this project, you agree to abide by our guidelines.
 
-## Code of Conduct
+## 🚀 Getting Started
 
-This project and everyone participating in it is governed by the [Contributor Covenant](https://www.contributor-covenant.org/version/1/4/code-of-conduct/) Code of Conduct.
+We use a standard **Fork & Pull Request** workflow for contributions.
 
-## How to Contribute
+### 1. Fork the Repository
+Click the **Fork** button at the top right corner of this repository's GitHub page to create a copy of the repository in your own GitHub account.
 
-1.  **Fork the Repository**: Start by forking `nvx-go-helper` to your own GitHub account.
-2.  **Clone the Fork**: Clone your fork to your local machine.
-    ```bash
-    git clone https://github.com/YOUR_USERNAME/nvx-go-helper.git
-    cd nvx-go-helper
-    ```
-3.  **Create a Branch**: Create a new branch for your feature or bug fix.
-    ```bash
-    git checkout -b feature/amazing-feature
-    ```
-4.  **Make Changes**: Write your code and ensure it follows the project's style (Go standard).
-5.  **Test**: Run tests to ensure your changes don't break anything.
-    ```bash
-    go test ./...
-    ```
-6.  **Commit**: Commit your changes with a clear message.
-    ```bash
-    git commit -m "feat: add amazing feature"
-    ```
-7.  **Push**: Push your branch to your fork.
-    ```bash
-    git push origin feature/amazing-feature
-    ```
-8.  **Pull Request**: Open a Pull Request on the original repository.
+### 2. Clone Your Fork
+Clone the forked repository to your local machine:
+```bash
+git clone https://github.com/<your-username>/nvx-go-driver.git
+cd nvx-go-driver
+```
 
-## Coding Style
+### 3. Add Upstream Remote
+To keep your fork in sync with the original repository, add the upstream remote. Assuming the original repo is owned by `Jkenyut` (adjust if different):
+```bash
+git remote add upstream https://github.com/Jkenyut/nvx-go-driver.git
+```
+*You can verify the remotes using `git remote -v`.*
 
-*   Follow standard Go conventions (`gofmt`).
-*   Ensure all exported functions have comments (GoDoc) in clear English.
-*   Keep dependencies to a minimum.
+### 4. Install Dependencies
+```bash
+make deps
+```
 
-## Reporting Bugs
+---
 
-Please open an issue on GitHub with details about the bug, including steps to reproduce it.
+## 🛠️ Development Workflow
+
+### 1. Sync with Upstream
+Before starting any work, ensure your local `main` branch is up to date with the upstream repository:
+```bash
+git checkout main
+git fetch upstream
+git rebase upstream/main
+git push origin main
+```
+
+### 2. Create a Feature Branch
+Create a new branch for your feature or bugfix. Use a descriptive name:
+```bash
+git checkout -b feature/your-feature-name
+# or for a bug fix:
+git checkout -b fix/your-bugfix-name
+```
+
+### 3. Make Your Changes
+Write your code! Ensure your changes follow our coding standards.
+
+### 4. Test and Lint
+Before committing, make sure all tests pass and the code is properly formatted/linted:
+```bash
+# Run tests
+make test
+
+# Run linter
+make lint
+```
+
+### 5. Commit Your Changes
+We follow [Conventional Commits](https://www.conventionalcommits.org/). Please format your commit messages accordingly (e.g., `feat:`, `fix:`, `docs:`, `chore:`).
+```bash
+git add .
+git commit -m "feat: add support for XYZ feature"
+```
+
+### 6. Push to Your Fork
+```bash
+git push -u origin feature/your-feature-name
+```
+
+### 7. Open a Pull Request (PR)
+Go to the original `nvx-go-driver` repository on GitHub. You should see a prompt to open a Pull Request from your recently pushed branch. Provide a clear description of the changes in the PR.
+
+---
+
+## 📝 Coding Standards
+
+- Follow standard idiomatic Go guidelines ([Effective Go](https://go.dev/doc/effective_go)).
+- Ensure all public functions, structs, and interfaces have GoDocs.
+- Add unit tests for any new functionality.
+- Keep dependencies minimal and justified.
+- Keep PRs focused on a single logical change.
+
+## 🐛 Reporting Issues
+
+If you find a bug or have a feature request, please search existing issues before opening a new one. Include:
+- A clear, descriptive title.
+- A detailed description of the issue.
+- Steps to reproduce (if it's a bug).
+- Expected vs. actual behavior.
+- Environment details (Go version, OS, driver versions, etc.).

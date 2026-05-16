@@ -72,7 +72,7 @@ func TestActivityContext(t *testing.T) {
 	t.Run("GetAllFieldsFromContext", func(t *testing.T) {
 		fields := GetAllFieldsFromContext(ctx)
 		assert.Equal(t, "trx-123", fields["nvx_transaction_id"])
-		assert.Equal(t, "merc-456", fields["nvx_merchant_key"])
+		assert.Equal(t, "api-456", fields["nvx_api_key"])
 		assert.Equal(t, "req-789", fields["nvx_request_id"])
 		assert.Equal(t, "user-001", fields["nvx_user_id"])
 		assert.Equal(t, "admin", fields["nvx_user_type"])
