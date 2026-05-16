@@ -1,61 +1,88 @@
+// Package worker provides a generic, concurrent worker pool implementation
+// with cancellation, timeouts, and ordered result streaming.
+//
+// It is designed for processing large batches of jobs (e.g., CSV imports,
+// data migrations, bulk API calls) where:
+//   - Concurrency is needed for speed
+//   - Results must be mapped 1:1 to inputs
+//   - Global and per-job timeouts are required
+//   - Panics must be caught safely
 package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 )
 
 // Job represents a generic job input.
-type Job[T any] struct {
-	ID   int // Unique identifier
-	Data T   // Payload
+// K is the comparable type of the identifier.
+// T is the type of data to be processed.
+type Job[K comparable, T any] struct {
+	ID   K // Unique identifier to map result back to input
+	Data T // Payload to be processed
 }
 
 // Result represents the output of processing a Job.
-type Result[R any] struct {
-	ID    int   // Matches Job.ID
-	Value R     // Success result
-	Err   error // Error result
+// K is the comparable type of the identifier.
+// R is the type of the result value.
+type Result[K comparable, R any] struct {
+	ID    K     // Matches Job.ID, allowing O(1) correlation
+	Value R     // Success result (if any)
+	Err   error // Error result (if any) or panic error
 }
 
-// WorkerPoolConfig holds configuration options.
+// WorkerPoolConfig holds configuration options for the worker pool.
 type WorkerPoolConfig struct {
-	NumWorkers    int           // Concurrent workers (default: 2)
-	WorkerTimeout time.Duration // Per-job timeout (default: 15s)
-	GlobalTimeout time.Duration // Global pool timeout (default: 30s)
-	StopOnError   bool          // Cancel all on first error
+	NumWorkers    int                        // Concurrent workers count (default: 2)
+	WorkerTimeout time.Duration              // Timeout for a single job execution (default: 15s)
+	GlobalTimeout time.Duration              // Total timeout for the entire batch (default: 30s)
+	StopOnError   bool                       // If true, the pool shuts down on the first error
+	PreserveOrder bool                       // If true, RunGenericWorkerPool returns results in the exact order of input jobs
+	OnProgress    func(completed, total int) // Optional callback for progress tracking
 }
 
-// ErrSkipped indicates a job was not processed.
+// ErrSkipped indicates a job was not processed because the pool was cancelled/timed out,
+// or a previous job failed (if StopOnError is true).
 var ErrSkipped = fmt.Errorf("job not processed (cancelled or skipped)")
 
-// RunGenericWorkerPoolStream executes jobs concurrently and streams results.
-// It guarantees 1:1 result mapping for every job ID.
-func RunGenericWorkerPoolStream[T any, R any](
+// RunGenericWorkerPoolStream executes a batch of jobs concurrently and streams results.
+//
+// Key features:
+//   - **Ordered Results**: Results are NOT guaranteed to be in order, but each Result contains the ID of the source Job.
+//   - **Concurrency Control**: Use cfg.NumWorkers to limit parallelism.
+//   - **Timeouts**: Enforces both GlobalTimeout (whole batch) and WorkerTimeout (per item).
+//   - **Safety**: Recovers from panics in worker function to prevent crash.
+//
+// The workerFunc must accept a context (which respects timeouts) and the job data.
+// It returns the result R and an error.
+//
+// Returns a read-only channel of Results. The channel is closed when all jobs are finished or timed out.
+func RunGenericWorkerPoolStream[K comparable, T any, R any](
 	ctx context.Context,
-	jobs []Job[T],
-	workerFunc func(context.Context, T) (R, error),
+	jobs []Job[K, T],
+	workerFunc func(context.Context, K, T) (R, error),
 	globalSemaphore chan struct{},
 	cfg WorkerPoolConfig,
-) <-chan Result[R] {
+) <-chan Result[K, R] {
 
 	if len(jobs) == 0 {
-		outCh := make(chan Result[R])
+		outCh := make(chan Result[K, R])
 		close(outCh)
 		return outCh
 	}
 
 	// Validate duplicate IDs
-	seenIDs := make(map[int]bool, len(jobs))
+	seenIDs := make(map[K]bool, len(jobs))
 	for _, job := range jobs {
 		if seenIDs[job.ID] {
-			outCh := make(chan Result[R], len(jobs))
+			outCh := make(chan Result[K, R], len(jobs))
 			go func() {
-				err := fmt.Errorf("duplicate job ID detected: %d (all jobs rejected)", job.ID)
+				err := fmt.Errorf("duplicate job ID detected: %v (all jobs rejected)", job.ID)
 				for _, j := range jobs {
-					outCh <- Result[R]{ID: j.ID, Err: err}
+					outCh <- Result[K, R]{ID: j.ID, Err: err}
 				}
 				close(outCh)
 			}()
@@ -67,10 +94,14 @@ func RunGenericWorkerPoolStream[T any, R any](
 	// Check parent context
 	select {
 	case <-ctx.Done():
-		outCh := make(chan Result[R], len(jobs))
+		outCh := make(chan Result[K, R], len(jobs))
 		go func() {
+			errToSend := ErrSkipped
+			if cause := context.Cause(ctx); cause != nil && cause != context.Canceled {
+				errToSend = fmt.Errorf("%w: %w", ErrSkipped, cause)
+			}
 			for _, job := range jobs {
-				outCh <- Result[R]{ID: job.ID, Err: ErrSkipped}
+				outCh <- Result[K, R]{ID: job.ID, Err: errToSend}
 			}
 			close(outCh)
 		}()
@@ -83,43 +114,52 @@ func RunGenericWorkerPoolStream[T any, R any](
 		cfg.NumWorkers = 2
 	}
 
-	if cfg.GlobalTimeout <= 0 {
+	if cfg.GlobalTimeout == 0 {
 		cfg.GlobalTimeout = 30 * time.Second
 	}
 
-	if cfg.WorkerTimeout <= 0 {
+	if cfg.WorkerTimeout == 0 {
 		cfg.WorkerTimeout = 15 * time.Second
-		// Cap at GlobalTimeout if smaller
-		if cfg.WorkerTimeout > cfg.GlobalTimeout {
-			cfg.WorkerTimeout = cfg.GlobalTimeout
-		}
 	}
 
-	// Ensure global timeout is safe relative to worker timeout
-	if cfg.GlobalTimeout < cfg.WorkerTimeout {
-		cfg.GlobalTimeout = cfg.WorkerTimeout * 2
+	if cfg.WorkerTimeout > 0 && cfg.GlobalTimeout > 0 && cfg.WorkerTimeout > cfg.GlobalTimeout {
+		cfg.WorkerTimeout = cfg.GlobalTimeout
 	}
 
-	outCh := make(chan Result[R], len(jobs))
-	jobCh := make(chan Job[T])
+	outCh := make(chan Result[K, R], len(jobs))
+	jobCh := make(chan Job[K, T])
 
-	poolCtx, cancelPool := context.WithTimeout(ctx, cfg.GlobalTimeout)
+	var poolCtx context.Context
+	var cancelPool context.CancelCauseFunc
+
+	poolCtx, cancelPool = context.WithCancelCause(ctx)
+
+	var timeoutTimer *time.Timer
+	if cfg.GlobalTimeout >= 0 {
+		timeoutTimer = time.AfterFunc(cfg.GlobalTimeout, func() {
+			cancelPool(fmt.Errorf("global timeout of %v exceeded", cfg.GlobalTimeout))
+		})
+	}
 
 	var cancelOnce sync.Once
-	safeCancelPool := func() {
+	safeCancelPool := func(cause error) {
 		cancelOnce.Do(func() {
-			cancelPool()
+			cancelPool(cause)
 		})
 	}
 
 	var workerWG sync.WaitGroup
 	var feederWG sync.WaitGroup
-	sentResults := &sync.Map{}
 
-	sendResult := func(result Result[R]) {
-		if _, alreadySent := sentResults.LoadOrStore(result.ID, true); !alreadySent {
-			outCh <- result
+	sendResult := func(result Result[K, R]) {
+		outCh <- result
+	}
+
+	getSkipErr := func() error {
+		if cause := context.Cause(poolCtx); cause != nil && cause != context.Canceled {
+			return fmt.Errorf("%w: %w", ErrSkipped, cause)
 		}
+		return ErrSkipped
 	}
 
 	// Worker goroutines
@@ -132,7 +172,7 @@ func RunGenericWorkerPoolStream[T any, R any](
 				// Check context before work
 				select {
 				case <-poolCtx.Done():
-					sendResult(Result[R]{ID: job.ID, Err: ErrSkipped})
+					sendResult(Result[K, R]{ID: job.ID, Err: getSkipErr()})
 					continue
 				default:
 				}
@@ -142,7 +182,7 @@ func RunGenericWorkerPoolStream[T any, R any](
 					select {
 					case globalSemaphore <- struct{}{}:
 					case <-poolCtx.Done():
-						sendResult(Result[R]{ID: job.ID, Err: ErrSkipped})
+						sendResult(Result[K, R]{ID: job.ID, Err: getSkipErr()})
 						continue
 					}
 				}
@@ -154,23 +194,30 @@ func RunGenericWorkerPoolStream[T any, R any](
 
 					defer func() {
 						if r := recover(); r != nil {
-							sendResult(Result[R]{ID: job.ID, Err: fmt.Errorf("panic: %v", r)})
+							panicErr := fmt.Errorf("panic: %v", r)
+							sendResult(Result[K, R]{ID: job.ID, Err: panicErr})
 							if cfg.StopOnError {
-								safeCancelPool()
+								safeCancelPool(fmt.Errorf("panic in job %v: %v", job.ID, r))
 							}
 						}
 					}()
 
-					taskCtx, cancel := context.WithTimeout(poolCtx, cfg.WorkerTimeout)
+					var taskCtx context.Context
+					var cancel context.CancelFunc
+					if cfg.WorkerTimeout < 0 {
+						taskCtx, cancel = context.WithCancel(poolCtx)
+					} else {
+						taskCtx, cancel = context.WithTimeoutCause(poolCtx, cfg.WorkerTimeout, fmt.Errorf("worker timeout of %v exceeded", cfg.WorkerTimeout))
+					}
 					defer cancel()
 
-					res, err := workerFunc(taskCtx, job.Data)
+					res, err := workerFunc(taskCtx, job.ID, job.Data)
 
 					if err != nil && cfg.StopOnError {
-						safeCancelPool()
+						safeCancelPool(fmt.Errorf("error in job %v: %w", job.ID, err))
 					}
 
-					sendResult(Result[R]{ID: job.ID, Value: res, Err: err})
+					sendResult(Result[K, R]{ID: job.ID, Value: res, Err: err})
 				}()
 			}
 		}()
@@ -186,7 +233,7 @@ func RunGenericWorkerPoolStream[T any, R any](
 			select {
 			case jobCh <- job:
 			case <-poolCtx.Done():
-				sendResult(Result[R]{ID: job.ID, Err: ErrSkipped})
+				sendResult(Result[K, R]{ID: job.ID, Err: getSkipErr()})
 			}
 		}
 	}()
@@ -195,9 +242,69 @@ func RunGenericWorkerPoolStream[T any, R any](
 	go func() {
 		feederWG.Wait()
 		workerWG.Wait()
-		cancelPool() // Ensure cleanup
+		if timeoutTimer != nil {
+			timeoutTimer.Stop()
+		}
+		cancelPool(nil) // Ensure cleanup
 		close(outCh)
 	}()
 
 	return outCh
+}
+
+// RunGenericWorkerPool executes a batch of jobs concurrently and waits for all of them to complete.
+// It returns a slice of all results and an aggregated error if any job failed.
+func RunGenericWorkerPool[K comparable, T any, R any](
+	ctx context.Context,
+	jobs []Job[K, T],
+	workerFunc func(context.Context, K, T) (R, error),
+	globalSemaphore chan struct{},
+	cfg WorkerPoolConfig,
+) ([]Result[K, R], error) {
+
+	outCh := RunGenericWorkerPoolStream(ctx, jobs, workerFunc, globalSemaphore, cfg)
+
+	var results []Result[K, R]
+	var errs []error
+	var completed int
+	total := len(jobs)
+
+	if cfg.PreserveOrder {
+		results = make([]Result[K, R], len(jobs))
+		indexMap := make(map[K]int, len(jobs))
+		for i, job := range jobs {
+			indexMap[job.ID] = i
+		}
+		for res := range outCh {
+			if idx, ok := indexMap[res.ID]; ok {
+				results[idx] = res
+			}
+			if res.Err != nil {
+				errs = append(errs, res.Err)
+			}
+			if cfg.OnProgress != nil {
+				completed++
+				cfg.OnProgress(completed, total)
+			}
+		}
+	} else {
+		results = make([]Result[K, R], 0, len(jobs))
+		for res := range outCh {
+			results = append(results, res)
+			if res.Err != nil {
+				errs = append(errs, res.Err)
+			}
+			if cfg.OnProgress != nil {
+				completed++
+				cfg.OnProgress(completed, total)
+			}
+		}
+	}
+
+	var finalErr error
+	if len(errs) > 0 {
+		finalErr = errors.Join(errs...)
+	}
+
+	return results, finalErr
 }

@@ -1,9 +1,9 @@
 # NVX Go Helper
 
-**nvx-go-helper** is a collection of **production-grade** utility functions designed to accelerate backend service development in Go (Golang). This library is built according to 2025 enterprise standards.
+**nvx-go-helper** is a collection of **production-grade** utility functions designed to accelerate backend service development in Go (Golang). This library is built according to enterprise standards.
 
 **Key Design Principles:**
-- **Zero dependencies** (wherever possible).
+- **Zero dependencies** (for most packages; explicitly kept minimal).
 - **High performance** (optimized for speed & zero allocations).
 - **Opinionated yet flexible** (following standard best practices).
 
@@ -15,90 +15,160 @@ go get github.com/Jkenyut/nvx-go-helper
 
 ## ✨ Core Features
 
-### 1. Crypto (`/crypto`)
-Ultra-fast and secure AES-256-GCM encryption. A simple, misuse-resistant wrapper around the standard `crypto/cipher`.
+### 1. Activity (`/activity`)
+Context-based helpers for tracking request metadata. Ideal for structured logging and distributed tracing.
 
+```go
+import "github.com/Jkenyut/nvx-go-helper/activity"
+
+// Inject into Context (usually in Middleware)
+ctx := activity.WithRequestID(context.Background(), "req-123")
+ctx = activity.WithUserID(ctx, "user-001")
+
+// Extract anywhere in your application
+userID, ok := activity.GetUserID(ctx)
+
+// Get all fields as map for structured loggers (Zap, Logrus, etc.)
+fields := activity.GetAllFieldsFromContext(ctx)
+// map[nvx_request_id:"req-123" nvx_user_id:"user-001"]
+```
+
+### 2. Cryptoutil (`/cryptoutil`)
+Unified package for all things crypto: AES-GCM, HMAC, SHA, UUIDs, and Random strings.
+
+**AES-256-GCM**
+Ultra-fast and secure encryption.
 ```go
 import "github.com/Jkenyut/nvx-go-helper/cryptoutil"
 
-// Init (call once at startup)
-enc, err := crypto.NewAESGCM("32-byte-secret-key-must-be-exact!")
-
-// Encrypt Any Struct -> URL specific Base64
+enc, _ := cryptoutil.NewAESGCM("32-byte-secret-key-must-be-exact!")
 token, _ := enc.Encrypt(map[string]string{"user_id": "123"})
-
-// Decrypt
-var data map[string]string
-err := enc.Decrypt(token, &data)
 ```
 
-### 2. Format (`/format`)
-Helpers for string manipulation, number formatting, and standard banking formats.
+**UUID (V4 & V7)**
+```go
+token := cryptoutil.V4() // Random
+id := cryptoutil.V7()    // Time-ordered (Recommended for DB Primary Keys)
+```
 
+**Random Strings & Keys (Turbo Optimized)**
+Uses bulk-read OS syscalls (`/dev/urandom`) for extreme speed without compromising cryptographic security.
+```go
+otp := cryptoutil.Numbers(6) // "123456"
+ref := cryptoutil.String(8)  // "A1B2C3D4"
+
+// Generate secure API Keys
+key, _ := cryptoutil.GenerateKeyHex(32) // "a1b2c3d4e5f6..."
+```
+
+### 3. Env (`/env`)
+Safe environment variable access with default values.
+```go
+import "github.com/Jkenyut/nvx-go-helper/env"
+
+port := env.GetInt("PORT", 8080)
+dbHost := env.GetString("DB_HOST", "localhost")
+```
+
+### 4. Format (`/format`)
+Helpers for string manipulation and formatting.
 ```go
 import "github.com/Jkenyut/nvx-go-helper/format"
 
-// Format Rupiah
-fmt.Println(format.Rupiah(150000)) // "150.000,00"
-
-// Format Account Number
+fmt.Println(format.Rupiah(150000))              // "150.000,00"
 fmt.Println(format.BRINorek("123456789012345")) // "1234-56-789012-34-5"
-
-// Title Case (Smart)
-fmt.Println(format.Title("admin-role")) // "Admin-Role"
-
-// Safe String (for filename/key)
-fmt.Println(format.ToSafeString("User Name / 123")) // "User_Name___123"
+fmt.Println(format.ToSafeString("User Name!"))  // "User_Name_"
 ```
 
-### 3. Response (`/model`)
-Standardized JSON API response format (`{ meta, data }`). Automatically handles `request_id` context propagation.
+### 5. Pointer (`/pointer`)
+Generic helpers to create pointers from literals easily.
+```go
+import "github.com/Jkenyut/nvx-go-helper/pointer"
+
+user := User{ IsActive: pointer.Of(true) }
+```
+
+### 6. Validator (`/validator`)
+Singleton wrapper for `go-playground/validator` v10, featuring a thread-safe custom validation registry and user-friendly error message translation.
+
+```go
+import (
+    "github.com/Jkenyut/nvx-go-helper/validator"
+    v10 "github.com/go-playground/validator/v10"
+)
+
+// 1. (Optional) Register Custom Tags safely at startup (init/main)
+validator.RegisterCustomValidation("is_admin", func(fl v10.FieldLevel) bool {
+    return fl.Field().String() == "admin"
+}, "Role must be exactly %s")
+
+// 2. Validate Structs
+type User struct {
+    Email string `validate:"required,email"`
+    Role  string `validate:"is_admin"`
+}
+
+err := validator.Struct(User{Email: "wrong", Role: "guest"})
+
+// 3. Get Human-Readable Errors for Frontend/Mobile API
+fmt.Println(validator.GetErrorFirstMsg(err)) // "email: Invalid email address format"
+```
+
+### 7. Response (`/response`)
+Standardized JSON API response format. Powered by **`bytedance/sonic`** for hyper-fast JSON serialization.
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/response"
 
 func CreateUser(c *gin.Context) {
-    // ... logic ...
-    
-    // Returns 201 Created
-    c.JSON(201, response.Created(c.Request.Context(), "user created", user))
-}
-
-func GetUser(c *gin.Context) {
-    // Returns 404 Not Found
-    c.JSON(404, response.NotFound(c.Request.Context(), "user not found"))
+    // Elegant Method Chaining + Hyper-Fast Sonic Marshal
+    respBytes := response.Created(c.Request.Context(), "user created", user).JSONMarshal()
+    c.Data(201, "application/json", respBytes)
 }
 ```
 
-### 4. Pagination (`/pagination`)
-Robust helper for handling pagination query parameters and generating Link headers (RFC 5988).
+### 8. Pagination (`/pagination`)
+Robust helper for handling offset-based and cursor-based pagination query parameters. Safe from "Ghost Pages" bugs.
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/pagination"
 
-// Parse from query param
-p := pagination.New("1", "10", 100) // page, limit, total
-
-// Use in DB query
+// Offset-Based
+p := pagination.New("100", "10", 50) // page=100 will be capped safely to max page=5!
 db.Limit(p.Limit).Offset(p.Offset()).Find(&users)
 
-// Generate response info
-c.JSON(200, gin.H{
-    "data": users,
-    "pagination": p,
-})
+// Cursor-Based (Enterprise Standard)
+cp := pagination.NewCursor("20", "next_xyz", "", true)
+```
+
+### 9. Worker Pool (`/worker`)
+Advanced, production-ready generic worker pool for concurrent batch processing.
+
+```go
+import "github.com/Jkenyut/nvx-go-helper/worker"
+
+jobs := []worker.Job[string, int]{
+    {ID: "task-1", Data: 100},
+}
+
+cfg := worker.WorkerPoolConfig{
+    NumWorkers:    5,
+    PreserveOrder: true,
+    OnProgress: func(completed, total int) {
+        fmt.Printf("Progress: %d/%d\n", completed, total)
+    },
+}
+
+workerFunc := func(ctx context.Context, id string, data int) (string, error) {
+    return fmt.Sprintf("Result: %d", data*2), nil
+}
+
+// Blocks until all jobs complete, captures context causes
+results, _ := worker.RunGenericWorkerPool(context.Background(), jobs, workerFunc, nil, cfg)
 ```
 
 ## 🤝 Contributing
-
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
-
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Pull requests are welcome. For major changes, please open an issue first.
 
 ## 📄 License
-
 [MIT](LICENSE)

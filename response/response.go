@@ -1,7 +1,7 @@
 // Package response provides a unified, predictable, and production-ready JSON API response
 // format used across all services in the organization.
 //
-// Key design principles (2025 enterprise standard):
+// Key design principles (enterprise standard):
 //   - Meta and Data are strictly separated → predictable parsing on frontend/mobile
 //   - request_id is taken from context (middleware) → full end-to-end tracing
 //   - All messages are lowercase → clean, professional, no screaming TITLE CASE
@@ -26,6 +26,8 @@ package response
 import (
 	"context"
 
+	"github.com/bytedance/sonic"
+
 	"github.com/Jkenyut/nvx-go-helper/activity"
 	"github.com/Jkenyut/nvx-go-helper/cryptoutil"
 )
@@ -48,13 +50,13 @@ type Response struct {
 
 // NewMeta builds metadata with correct request_id precedence:
 // 1. From context (middleware/header)
-// 2. Generate new UUID v4
+// 2. Generate new UUID v7
 func NewMeta(ctx context.Context, success bool, message string, status int) Meta {
 	// Try to get request ID from context
 	reqID, _ := activity.GetRequestID(ctx)
-	// If not found, generate a new random UUID v4
+	// If not found, generate a new random UUID v7
 	if reqID == "" {
-		reqID = cryptoutil.V4()
+		reqID = cryptoutil.V7()
 	}
 
 	// Return the constructed Meta struct
@@ -86,6 +88,16 @@ func Accepted(ctx context.Context, message string, data any) Response {
 // NoContent sends a 204 No Content response.
 func NoContent(ctx context.Context) Response {
 	return Response{Meta: NewMeta(ctx, true, "no content", 204)}
+}
+
+// ResetContent sends a 205 Reset Content response.
+func ResetContent(ctx context.Context) Response {
+	return Response{Meta: NewMeta(ctx, true, "reset content", 205)}
+}
+
+// PartialContent sends a 206 Partial Content response with data.
+func PartialContent(ctx context.Context, message string, data any) Response {
+	return Response{Meta: NewMeta(ctx, true, message, 206), Data: data}
 }
 
 // === ERROR RESPONSES (4xx & 5xx) ===
@@ -155,6 +167,11 @@ func PreconditionFailed(ctx context.Context, message string) Response {
 	return Response{Meta: NewMeta(ctx, false, message, 412)}
 }
 
+// PreconditionRequired sends a 428 Precondition Required response.
+func PreconditionRequired(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 428)}
+}
+
 // PayloadTooLarge sends a 413 Payload Too Large response.
 func PayloadTooLarge(ctx context.Context, message string) Response {
 	return Response{Meta: NewMeta(ctx, false, message, 413)}
@@ -185,6 +202,96 @@ func GatewayTimeout(ctx context.Context, message string) Response {
 	return Response{Meta: NewMeta(ctx, false, message, 504)}
 }
 
+// PaymentRequired sends a 402 Payment Required response.
+func PaymentRequired(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 402)}
+}
+
+// LengthRequired sends a 411 Length Required response.
+func LengthRequired(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 411)}
+}
+
+// URITooLong sends a 414 URI Too Long response.
+func URITooLong(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 414)}
+}
+
+// RangeNotSatisfiable sends a 416 Range Not Satisfiable response.
+func RangeNotSatisfiable(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 416)}
+}
+
+// ExpectationFailed sends a 417 Expectation Failed response.
+func ExpectationFailed(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 417)}
+}
+
+// Teapot sends a 418 I'm a teapot response.
+func Teapot(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 418)}
+}
+
+// MisdirectedRequest sends a 421 Misdirected Request response.
+func MisdirectedRequest(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 421)}
+}
+
+// Locked sends a 423 Locked response.
+func Locked(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 423)}
+}
+
+// FailedDependency sends a 424 Failed Dependency response.
+func FailedDependency(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 424)}
+}
+
+// UpgradeRequired sends a 426 Upgrade Required response.
+func UpgradeRequired(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 426)}
+}
+
+// RequestHeaderFieldsTooLarge sends a 431 Request Header Fields Too Large response.
+func RequestHeaderFieldsTooLarge(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 431)}
+}
+
+// UnavailableForLegalReasons sends a 451 Unavailable For Legal Reasons response.
+func UnavailableForLegalReasons(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 451)}
+}
+
+// HTTPVersionNotSupported sends a 505 HTTP Version Not Supported response.
+func HTTPVersionNotSupported(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 505)}
+}
+
+// VariantAlsoNegotiates sends a 506 Variant Also Negotiates response.
+func VariantAlsoNegotiates(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 506)}
+}
+
+// InsufficientStorage sends a 507 Insufficient Storage response.
+func InsufficientStorage(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 507)}
+}
+
+// LoopDetected sends a 508 Loop Detected response.
+func LoopDetected(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 508)}
+}
+
+// NotExtended sends a 510 Not Extended response.
+func NotExtended(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 510)}
+}
+
+// NetworkAuthenticationRequired sends a 511 Network Authentication Required response.
+func NetworkAuthenticationRequired(ctx context.Context, message string) Response {
+	return Response{Meta: NewMeta(ctx, false, message, 511)}
+}
+
 // === HELPERS ===
 
 // Success is a shortcut for OK(ctx, "success", data).
@@ -204,4 +311,29 @@ func WithMessageData(ctx context.Context, message string, status int, data any) 
 	// Determine success based on status code range
 	success := status >= 200 && status < 300
 	return Response{Meta: NewMeta(ctx, success, message, status), Data: data}
+}
+
+func (r Response) JSONMarshal() []byte {
+	if r.Meta.StatusCode == 0 {
+		r.Meta.StatusCode = 200
+	}
+
+	resp, err := sonic.Marshal(r)
+	if err != nil {
+		// Fallback for panic prevention: if the user provided an unmarshalable Data type (like func or chan),
+		// we return a standard internal server error JSON format directly to prevent crashing or returning nil.
+		fallback := Response{
+			Meta: Meta{
+				Success:    false,
+				Message:    "internal server error: failed to marshal response data",
+				StatusCode: 500,
+				RequestID:  r.Meta.RequestID, // Preserve the request ID for tracing
+			},
+			Data: nil,
+		}
+		fallbackResp, _ := sonic.Marshal(fallback)
+		return fallbackResp
+	}
+
+	return resp
 }
