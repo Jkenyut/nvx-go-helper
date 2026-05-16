@@ -303,7 +303,16 @@ func RunGenericWorkerPool[K comparable, T any, R any](
 
 	var finalErr error
 	if len(errs) > 0 {
-		finalErr = errors.Join(errs...)
+		var uniqueErrs []error
+		seenErrs := make(map[string]bool)
+		for _, e := range errs {
+			msg := e.Error()
+			if !seenErrs[msg] {
+				seenErrs[msg] = true
+				uniqueErrs = append(uniqueErrs, e)
+			}
+		}
+		finalErr = errors.Join(uniqueErrs...)
 	}
 
 	return results, finalErr
