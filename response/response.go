@@ -25,6 +25,7 @@ package response
 
 import (
 	"context"
+	"io"
 
 	"github.com/bytedance/sonic"
 
@@ -334,6 +335,25 @@ func (r Response) JSONMarshal() []byte {
 		fallbackResp, _ := sonic.Marshal(fallback)
 		return fallbackResp
 	}
-
 	return resp
+}
+
+func (r Response) JSONEncoder(w io.Writer) {
+	if r.Meta.StatusCode == 0 {
+		r.Meta.StatusCode = 200
+	}
+
+	enc := sonic.ConfigDefault.NewEncoder(w)
+	if err := enc.Encode(r); err != nil {
+		fallback := Response{
+			Meta: Meta{
+				Success:    false,
+				Message:    "internal server error: failed to encode response data",
+				StatusCode: 500,
+				RequestID:  r.Meta.RequestID, // Preserve the request ID for tracing
+			},
+			Data: nil,
+		}
+		_ = enc.Encode(fallback)
+	}
 }
