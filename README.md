@@ -112,6 +112,9 @@ err := validator.Struct(User{Email: "wrong", Role: "guest"})
 
 // 3. Get Human-Readable Errors for Frontend/Mobile API
 fmt.Println(validator.GetErrorFirstMsg(err)) // "email: Invalid email address format"
+
+// Includes built-in Indonesian specific validations!
+// e.g. `validate:"nik"`, `validate:"npwp"`, `validate:"phone_id"`
 ```
 
 ### 7. Response (`/response`)
@@ -165,6 +168,73 @@ workerFunc := func(ctx context.Context, id string, data int) (string, error) {
 
 // Blocks until all jobs complete, captures context causes
 results, _ := worker.RunGenericWorkerPool(context.Background(), jobs, workerFunc, nil, cfg)
+```
+
+### 10. Request (`/request`)
+Helpers for safely extracting data from HTTP requests, including Context, JSON Binding, Query Parameters, and Headers.
+
+```go
+import "github.com/Jkenyut/nvx-go-helper/request"
+
+// Bind JSON and Validate instantly
+var payload UserRequest
+err := request.BindAndValidate(c.Request, &payload)
+
+// Safe Query Extractors (with Fallbacks)
+page := request.GetQueryInt(c.Request, "page", 1)
+active := request.GetQueryBool(c.Request, "active", true)
+
+// Safe IP and Token extraction
+ip := request.GetClientIP(c.Request) // parses X-Forwarded-For securely
+token := request.GetBearerToken(c.Request)
+```
+
+### 11. Slice & Map Utilities (`/sliceutil`)
+Generic-powered utilities for collections (Go 1.18+). Zero reflection, full type safety.
+
+```go
+import "github.com/Jkenyut/nvx-go-helper/sliceutil"
+
+users := []User{{ID: 1}, {ID: 2}, {ID: 3}}
+
+// Slices
+ids := sliceutil.Map(users, func(u User) int { return u.ID })
+chunks := sliceutil.Chunk(ids, 2) // [[1, 2], [3]]
+
+// Maps
+userMap := sliceutil.ToMap(users, func(u User) int { return u.ID }) // map[int]User
+keys := sliceutil.MapKeys(userMap) // []int{1, 2, 3}
+```
+
+### 12. File Utilities (`/fileutil`)
+Secure file validation and manipulation. Ideal for handling uploads.
+
+```go
+import "github.com/Jkenyut/nvx-go-helper/fileutil"
+
+// Prevent Path Traversal
+safeName := fileutil.SanitizeFileName("../../../etc/passwd") // "passwd"
+
+// Validate Magic Bytes (MIME Type) securely
+isImage := fileutil.IsSafeImage(fileBytes) // true if PNG/JPEG/GIF/WebP
+
+// Format file size
+size := fileutil.FormatFileSize(1048576) // "1.0 MB"
+```
+
+### 13. Retry Mechanism (`/retry`)
+Generic, options-based retry mechanism for failing operations (DB/Network).
+
+```go
+import "github.com/Jkenyut/nvx-go-helper/retry"
+
+err := retry.Do(func() error {
+    return db.Ping()
+}, 
+    retry.WithMaxAttempts(3), 
+    retry.WithBackoff(1*time.Second, 2.0), // 1s, 2s, 4s...
+    retry.WithContext(ctx),
+)
 ```
 
 ## 🤝 Contributing
