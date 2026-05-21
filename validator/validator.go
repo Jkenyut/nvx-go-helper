@@ -5,6 +5,7 @@ package validator
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -52,6 +53,11 @@ type wrapper struct {
 // New creates and returns a new thread-safe Validator instance.
 func New() Validator {
 	v := validator.New()
+
+	// Register Indonesian custom validations
+	_ = v.RegisterValidation("nik", validateNIK)
+	_ = v.RegisterValidation("npwp", validateNPWP)
+	_ = v.RegisterValidation("phone_id", validatePhoneID)
 
 	// RegisterTagNameFunc registers a function to get the tag name from the struct field.
 	// This is used to return the JSON tag name in validation errors.
@@ -231,6 +237,12 @@ func (w *wrapper) msgForTag(fe validator.FieldError) string {
 		return fmt.Sprintf("Must be a valid datetime format (%s)", fe.Param())
 	case "json":
 		return "Must be a valid JSON string"
+	case "nik":
+		return "Must be a valid Indonesian NIK (16 digits)"
+	case "npwp":
+		return "Must be a valid Indonesian NPWP"
+	case "phone_id":
+		return "Must be a valid Indonesian phone number"
 	default:
 		return fmt.Sprintf("Failed on %s validation", fe.Tag())
 	}
@@ -335,4 +347,29 @@ func GetErrorFirstMsg(err error) string {
 // GetErrorsFullMsg returns all translated validation errors using the global validator.
 func GetErrorsFullMsg(err error) string {
 	return Get().GetErrorsFullMsg(err)
+}
+
+// ============================================================================
+// Custom Indonesian Validations
+// ============================================================================
+
+var (
+	nikRegex   = regexp.MustCompile(`^[0-9]{16}$`)
+	npwpRegex  = regexp.MustCompile(`^[0-9]{15,16}$`)
+	phoneIDRegex = regexp.MustCompile(`^(?:\+62|62|0)8[1-9][0-9]{6,11}$`)
+)
+
+func validateNIK(fl validator.FieldLevel) bool {
+	return nikRegex.MatchString(fl.Field().String())
+}
+
+func validateNPWP(fl validator.FieldLevel) bool {
+	val := fl.Field().String()
+	val = strings.ReplaceAll(val, ".", "")
+	val = strings.ReplaceAll(val, "-", "")
+	return npwpRegex.MatchString(val)
+}
+
+func validatePhoneID(fl validator.FieldLevel) bool {
+	return phoneIDRegex.MatchString(fl.Field().String())
 }

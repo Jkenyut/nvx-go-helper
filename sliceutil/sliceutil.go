@@ -99,3 +99,160 @@ func Unique[T comparable](slice []T) []T {
 	}
 	return result
 }
+
+// Contains returns true if the specified element exists in the slice.
+func Contains[T comparable](slice []T, elem T) bool {
+	for i := range slice {
+		if slice[i] == elem {
+			return true
+		}
+	}
+	return false
+}
+
+// Find returns the first element that satisfies the condition f, and true.
+// If no element satisfies the condition, it returns the zero value of T and false.
+func Find[T any](slice []T, f func(T) bool) (T, bool) {
+	for i := range slice {
+		if f(slice[i]) {
+			return slice[i], true
+		}
+	}
+	var zero T
+	return zero, false
+}
+
+// ToMap converts a slice into a map, using the keyFn to generate keys for each element.
+// If multiple elements resolve to the same key, the last one wins.
+func ToMap[K comparable, V any](slice []V, keyFn func(V) K) map[K]V {
+	if len(slice) == 0 {
+		return map[K]V{}
+	}
+	result := make(map[K]V, len(slice))
+	for i := range slice {
+		result[keyFn(slice[i])] = slice[i]
+	}
+	return result
+}
+
+// GroupBy groups the elements of the slice into a map, using the keyFn to determine the group key.
+func GroupBy[K comparable, V any](slice []V, keyFn func(V) K) map[K][]V {
+	if len(slice) == 0 {
+		return map[K][]V{}
+	}
+	result := make(map[K][]V)
+	for i := range slice {
+		key := keyFn(slice[i])
+		result[key] = append(result[key], slice[i])
+	}
+	return result
+}
+
+// Intersection returns a new slice containing elements that are present in both slice a and slice b.
+func Intersection[T comparable](a, b []T) []T {
+	if len(a) == 0 || len(b) == 0 {
+		return []T{}
+	}
+	seen := make(map[T]struct{}, len(b))
+	for i := range b {
+		seen[b[i]] = struct{}{}
+	}
+	
+	var result []T
+	for i := range a {
+		if _, ok := seen[a[i]]; ok {
+			result = append(result, a[i])
+		}
+	}
+	if result == nil {
+		return []T{}
+	}
+	return result
+}
+
+// Difference returns a new slice containing elements that are in slice a but not in slice b.
+func Difference[T comparable](a, b []T) []T {
+	if len(a) == 0 {
+		return []T{}
+	}
+	if len(b) == 0 {
+		result := make([]T, len(a))
+		copy(result, a)
+		return result
+	}
+	
+	seen := make(map[T]struct{}, len(b))
+	for i := range b {
+		seen[b[i]] = struct{}{}
+	}
+
+	var result []T
+	for i := range a {
+		if _, ok := seen[a[i]]; !ok {
+			result = append(result, a[i])
+		}
+	}
+	if result == nil {
+		return []T{}
+	}
+	return result
+}
+
+// Reverse reverses the elements of the slice in place.
+// It modifies the original slice and returns it for convenience.
+func Reverse[T any](slice []T) []T {
+	for i, j := 0, len(slice)-1; i < j; i, j = i+1, j-1 {
+		slice[i], slice[j] = slice[j], slice[i]
+	}
+	return slice
+}
+
+// Flatten converts a two-dimensional slice (slice of slices) into a single one-dimensional slice.
+func Flatten[T any](slices [][]T) []T {
+	if len(slices) == 0 {
+		return []T{}
+	}
+	
+	var totalLen int
+	for i := range slices {
+		totalLen += len(slices[i])
+	}
+	
+	result := make([]T, 0, totalLen)
+	for i := range slices {
+		result = append(result, slices[i]...)
+	}
+	return result
+}
+
+// MapKeys returns a slice containing all the keys from a map.
+// The order of the keys is not guaranteed.
+func MapKeys[K comparable, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// MapValues returns a slice containing all the values from a map.
+// The order of the values is not guaranteed.
+func MapValues[K comparable, V any](m map[K]V) []V {
+	values := make([]V, 0, len(m))
+	for _, v := range m {
+		values = append(values, v)
+	}
+	return values
+}
+
+// MapMerge merges multiple maps into a new map.
+// If there are duplicate keys, the value from the map provided later in the arguments will overwrite earlier ones.
+func MapMerge[K comparable, V any](maps ...map[K]V) map[K]V {
+	result := make(map[K]V)
+	for _, m := range maps {
+		for k, v := range m {
+			result[k] = v
+		}
+	}
+	return result
+}
