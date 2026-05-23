@@ -139,7 +139,6 @@ func GetExtensionFromMimeType(mimeType string) string {
 	}
 }
 
-
 // GetMimeTypeFromExtension returns the MIME type for a given file extension.
 // This is the reverse of GetExtensionFromMimeType.
 // It returns "application/octet-stream" if the extension is not found.

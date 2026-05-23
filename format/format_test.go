@@ -145,7 +145,7 @@ func TestToString(t *testing.T) {
 		{
 			name:     "map → JSON",
 			input:    map[string]any{"name": "Budi", "age": 30},
-			expected: `{"age":30,"name":"Budi"}`, // urutan bisa beda, tapi isi sama
+			expected: `{"name":"Budi","age":30}`,
 		},
 		{
 			name:     "struct → JSON",

@@ -11,12 +11,13 @@
 package format
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 // =============================================================================
@@ -231,7 +232,7 @@ func ToString(v any) string {
 		}
 
 		// JSON fallback for complex types
-		if b, err := json.Marshal(v); err == nil {
+		if b, err := sonic.Marshal(v); err == nil {
 			return string(b)
 		}
 		// Ultimate fallback
