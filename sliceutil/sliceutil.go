@@ -24,7 +24,7 @@ func Chunk[T any](slice []T, size int) [][]T {
 	capacity := (len(slice) + size - 1) / size
 	chunks := make([][]T, 0, capacity)
 	for i := 0; i < len(slice); i += size {
-		end := min(i + size, len(slice))
+		end := min(i+size, len(slice))
 		chunks = append(chunks, slice[i:end])
 	}
 	return chunks
@@ -87,7 +87,7 @@ func Unique[T comparable](slice []T) []T {
 
 	// Pre-allocate map capacity to avoid expensive map resizing
 	seen := make(map[T]struct{}, len(slice))
-	
+
 	// Pre-allocate slice capacity to avoid re-allocations (tradeoff: slightly higher memory if many duplicates)
 	result := make([]T, 0, len(slice))
 
@@ -157,7 +157,7 @@ func Intersection[T comparable](a, b []T) []T {
 	for i := range b {
 		seen[b[i]] = struct{}{}
 	}
-	
+
 	var result []T
 	for i := range a {
 		if _, ok := seen[a[i]]; ok {
@@ -180,7 +180,7 @@ func Difference[T comparable](a, b []T) []T {
 		copy(result, a)
 		return result
 	}
-	
+
 	seen := make(map[T]struct{}, len(b))
 	for i := range b {
 		seen[b[i]] = struct{}{}
@@ -212,12 +212,12 @@ func Flatten[T any](slices [][]T) []T {
 	if len(slices) == 0 {
 		return []T{}
 	}
-	
+
 	var totalLen int
 	for i := range slices {
 		totalLen += len(slices[i])
 	}
-	
+
 	result := make([]T, 0, totalLen)
 	for i := range slices {
 		result = append(result, slices[i]...)
@@ -253,6 +253,25 @@ func MapMerge[K comparable, V any](maps ...map[K]V) map[K]V {
 		for k, v := range m {
 			result[k] = v
 		}
+	}
+	return result
+}
+
+// MergeSlices merges multiple slices into a new slice.
+// The order of the elements will be preserved from the order of the input slices.
+func MergeSlices[T any](slices ...[]T) []T {
+	if len(slices) == 0 {
+		return []T{}
+	}
+
+	var totalLen int
+	for i := range slices {
+		totalLen += len(slices[i])
+	}
+
+	result := make([]T, 0, totalLen)
+	for i := range slices {
+		result = append(result, slices[i]...)
 	}
 	return result
 }

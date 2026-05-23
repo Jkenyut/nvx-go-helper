@@ -109,7 +109,7 @@ func Do(action func() error, opts ...Option) error {
 			case <-cfg.ctx.Done():
 				return cfg.ctx.Err()
 			}
-			
+
 			// Apply backoff multiplier for next attempt
 			if cfg.multiplier > 1.0 {
 				delay = time.Duration(float64(delay) * cfg.multiplier)

@@ -70,3 +70,17 @@ func TestFormatFileSize(t *testing.T) {
 		})
 	}
 }
+
+func TestGetExtensionFromMimeType(t *testing.T) {
+	assert.Equal(t, ".jpg", GetExtensionFromMimeType("image/jpeg"))
+	assert.Equal(t, ".png", GetExtensionFromMimeType("image/png"))
+	assert.Equal(t, ".pdf", GetExtensionFromMimeType("application/pdf"))
+	assert.Equal(t, "", GetExtensionFromMimeType("unknown/type"))
+}
+
+func TestGetMimeTypeFromExtension(t *testing.T) {
+	assert.Equal(t, "image/jpeg", GetMimeTypeFromExtension(".jpg"))
+	assert.Equal(t, "image/jpeg", GetMimeTypeFromExtension(".jpeg"))
+	assert.Equal(t, "application/pdf", GetMimeTypeFromExtension(".pdf"))
+	assert.Equal(t, "application/octet-stream", GetMimeTypeFromExtension(".unknown"))
+}

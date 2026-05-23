@@ -27,20 +27,6 @@ func TestTitle(t *testing.T) {
 	}
 }
 
-func TestAddStringUnique(t *testing.T) {
-	var slice []string
-
-	cases := []string{"Admin", "admin", "USER", "User", "guest", "", "  ", "Manager", "MANAGER"}
-
-	for _, c := range cases {
-		AddStringUnique(c, &slice)
-	}
-
-	expected := []string{"Admin", "User", "Guest", "Manager"}
-	assert.Equal(t, expected, slice)
-	assert.Len(t, slice, 4)
-}
-
 func TestFormatBRINorek(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -159,7 +145,7 @@ func TestToString(t *testing.T) {
 		{
 			name:     "map → JSON",
 			input:    map[string]any{"name": "Budi", "age": 30},
-			expected: `{"age":30,"name":"Budi"}`, // urutan bisa beda, tapi isi sama
+			expected: `{"name":"Budi","age":30}`,
 		},
 		{
 			name:     "struct → JSON",

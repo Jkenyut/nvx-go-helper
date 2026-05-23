@@ -2,10 +2,10 @@ package response
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/Jkenyut/nvx-go-helper/activity"
+	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -126,7 +126,7 @@ func TestResponse_JSONSerialization(t *testing.T) {
 	ctx := activity.WithRequestID(context.Background(), "test-12345")
 	resp := Created(ctx, "user registered", map[string]string{"name": "Budi"})
 
-	data, _ := json.Marshal(resp)
+	data, _ := sonic.Marshal(resp)
 	jsonStr := string(data)
 
 	assert.Contains(t, jsonStr, `"success":true`)
@@ -141,7 +141,7 @@ func TestResponse_WithMessage(t *testing.T) {
 	ctx := context.WithValue(context.Background(), activity.RequestID, "test-12345")
 	resp := WithMessage(ctx, "user registered", 200)
 
-	data, _ := json.Marshal(resp)
+	data, _ := sonic.Marshal(resp)
 	jsonStr := string(data)
 
 	assert.Contains(t, jsonStr, `"success":true`)
@@ -149,7 +149,7 @@ func TestResponse_WithMessage(t *testing.T) {
 
 	// Test failure case
 	respErr := WithMessage(ctx, "something wrong", 400)
-	dataErr, _ := json.Marshal(respErr)
+	dataErr, _ := sonic.Marshal(respErr)
 	jsonStrErr := string(dataErr)
 
 	assert.Contains(t, jsonStrErr, `"success":false`)

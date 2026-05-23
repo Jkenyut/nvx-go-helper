@@ -11,12 +11,13 @@
 package format
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 // =============================================================================
@@ -36,6 +37,7 @@ func Title(s string) string {
 		return ""
 	}
 	var result strings.Builder
+	result.Grow(len(s))
 	// Flag to track if the next character should be uppercased
 	upperNext := true
 	for _, r := range s {
@@ -73,33 +75,6 @@ func toLower(r rune) rune {
 		return r + 32 // ASCII logic
 	}
 	return r
-}
-
-// AddStringUnique appends a value to a string slice only if it does not already exist
-// (case-insensitive comparison). The value is normalized with Title() before insertion.
-// Empty (after trim) values are ignored. The slice is modified in place.
-//
-// Example:
-//
-//	items := []string{"Admin", "User"}
-//	AddStringUnique("admin", &items)      // no change
-//	AddStringUnique("moderator", &items) // items becomes ["Admin", "User", "Moderator"]
-func AddStringUnique(value string, slice *[]string) {
-	// Guard clause for empty input
-	if strings.TrimSpace(value) == "" {
-		return
-	}
-	// Normalize value
-	value = Title(value)
-
-	// Check for duplicates
-	for _, v := range *slice {
-		if strings.EqualFold(v, value) {
-			return // Already exists
-		}
-	}
-	// Append if unique
-	*slice = append(*slice, value)
 }
 
 // =============================================================================
@@ -217,10 +192,26 @@ func ToString(v any) string {
 		return value
 	case []byte:
 		return string(value)
-	case int, int8, int16, int32, int64:
-		return fmt.Sprintf("%d", value)
-	case uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprintf("%d", value)
+	case int:
+		return strconv.FormatInt(int64(value), 10)
+	case int8:
+		return strconv.FormatInt(int64(value), 10)
+	case int16:
+		return strconv.FormatInt(int64(value), 10)
+	case int32:
+		return strconv.FormatInt(int64(value), 10)
+	case int64:
+		return strconv.FormatInt(value, 10)
+	case uint:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint64:
+		return strconv.FormatUint(value, 10)
 	case float32:
 		return strconv.FormatFloat(float64(value), 'f', -1, 32)
 	case float64:
@@ -241,7 +232,7 @@ func ToString(v any) string {
 		}
 
 		// JSON fallback for complex types
-		if b, err := json.Marshal(v); err == nil {
+		if b, err := sonic.Marshal(v); err == nil {
 			return string(b)
 		}
 		// Ultimate fallback
@@ -300,14 +291,15 @@ func ToSafeString(v any) string {
 	s := ToString(v)
 	// Trim whitespace
 	s = strings.TrimSpace(s)
-	// Replace unsafe characters
-	s = strings.ReplaceAll(s, " ", "_")
-	s = strings.ReplaceAll(s, "/", "_")
-	s = strings.ReplaceAll(s, "\\", "_")
-	s = strings.ReplaceAll(s, ":", "_")
 	// Handle empty result
 	if s == "" {
 		return "empty"
 	}
-	return s
+	// Replace unsafe characters
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || r == '/' || r == '\\' || r == ':' {
+			return '_'
+		}
+		return r
+	}, s)
 }

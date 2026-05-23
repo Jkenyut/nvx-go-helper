@@ -50,14 +50,14 @@ func TestRetryFailure(t *testing.T) {
 func TestRetryWithBackoff(t *testing.T) {
 	attempts := 0
 	start := time.Now()
-	
+
 	err := Do(func() error {
 		attempts++
 		return errors.New("fail")
 	}, WithMaxAttempts(3), WithBackoff(10*time.Millisecond, 2.0))
-	
+
 	duration := time.Since(start)
-	
+
 	assert.Error(t, err)
 	assert.Equal(t, 3, attempts)
 	// Delay 1: 10ms
@@ -68,7 +68,7 @@ func TestRetryWithBackoff(t *testing.T) {
 
 func TestRetryWithContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	attempts := 0
 	err := Do(func() error {
 		attempts++
@@ -87,19 +87,19 @@ func TestRetryWithContextCancellation(t *testing.T) {
 func TestRetryIf(t *testing.T) {
 	attempts := 0
 	fatalErr := errors.New("fatal auth error")
-	
+
 	err := Do(func() error {
 		attempts++
 		if attempts == 2 {
 			return fatalErr
 		}
 		return errors.New("network blip")
-	}, 
-	WithMaxAttempts(5), 
-	WithDelay(10*time.Millisecond),
-	RetryIf(func(err error) bool {
-		return err != fatalErr
-	}))
+	},
+		WithMaxAttempts(5),
+		WithDelay(10*time.Millisecond),
+		RetryIf(func(err error) bool {
+			return err != fatalErr
+		}))
 
 	// Should stop immediately after the second attempt returning fatalErr
 	assert.Error(t, err)

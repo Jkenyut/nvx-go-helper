@@ -266,3 +266,36 @@ func ExampleUnique() {
 	fmt.Println(uniqueFruits)
 	// Output: [apple banana orange]
 }
+
+func TestMergeSlices(t *testing.T) {
+	t.Run("Merge multiple integer slices", func(t *testing.T) {
+		s1 := []int{1, 2}
+		s2 := []int{3, 4}
+		s3 := []int{5}
+		got := sliceutil.MergeSlices(s1, s2, s3)
+		want := []int{1, 2, 3, 4, 5}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("MergeSlices() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("Merge empty and nil slices", func(t *testing.T) {
+		var s1 []int
+		s2 := []int{}
+		got := sliceutil.MergeSlices(s1, s2)
+		want := []int{}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("MergeSlices() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("Merge strings", func(t *testing.T) {
+		s1 := []string{"a"}
+		s2 := []string{"b", "c"}
+		got := sliceutil.MergeSlices(s1, s2)
+		want := []string{"a", "b", "c"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("MergeSlices() = %v, want %v", got, want)
+		}
+	})
+}
