@@ -24,7 +24,7 @@ func BindJSON(r *http.Request, dest interface{}) error {
 
 	// Use sonic's streaming decoder
 	decoder := sonic.ConfigDefault.NewDecoder(r.Body)
-	
+
 	if err := decoder.Decode(dest); err != nil {
 		return err
 	}

@@ -28,7 +28,6 @@ package pagination
 
 import (
 	"fmt"
-	"math"
 	"net/url"
 	"strconv"
 )
@@ -126,8 +125,8 @@ func (p Pagination) calculateTotalPages() int {
 	if p.Limit == 0 {
 		return 0
 	}
-	// Use float division and ceil to get total pages
-	return int(math.Ceil(float64(p.Total) / float64(p.Limit)))
+	// Use integer arithmetic to calculate total pages (ceil)
+	return (p.Total + p.Limit - 1) / p.Limit
 }
 
 // Links generates RFC 5988 Link headers with FULL URL (scheme + host + path)

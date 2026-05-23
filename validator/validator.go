@@ -354,8 +354,8 @@ func GetErrorsFullMsg(err error) string {
 // ============================================================================
 
 var (
-	nikRegex   = regexp.MustCompile(`^[0-9]{16}$`)
-	npwpRegex  = regexp.MustCompile(`^[0-9]{15,16}$`)
+	nikRegex     = regexp.MustCompile(`^[0-9]{16}$`)
+	npwpRegex    = regexp.MustCompile(`^[0-9]{15,16}$`)
 	phoneIDRegex = regexp.MustCompile(`^(?:\+62|62|0)8[1-9][0-9]{6,11}$`)
 )
 
