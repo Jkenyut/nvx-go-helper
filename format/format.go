@@ -226,8 +226,15 @@ func ToString(v any) string {
 	case fmt.Stringer:
 		return value.String()
 	default:
-		// Handle nil pointer/interface
-		if reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil() {
+		// Handle nil pointer/interface safely.
+		// reflect.ValueOf(v).IsNil() panics on non-nillable kinds, so we must check first.
+		rv := reflect.ValueOf(v)
+		switch rv.Kind() {
+		case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func:
+			if rv.IsNil() {
+				return ""
+			}
+		case reflect.Invalid:
 			return ""
 		}
 
@@ -302,4 +309,106 @@ func ToSafeString(v any) string {
 		}
 		return r
 	}, s)
+}
+
+// =============================================================================
+// STRING MASKING & FORMATTING
+// =============================================================================
+
+// MaskEmail masks an email address for display, preserving only the first
+// character of the local part and the full domain.
+// Returns empty string if input is empty or invalid.
+//
+// Example:
+//
+//	MaskEmail("john@example.com")      // "j***@example.com"
+//	MaskEmail("ab@example.com")        // "a***@example.com"
+func MaskEmail(email string) string {
+	if email == "" {
+		return ""
+	}
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	local := parts[0]
+	// Show first character, mask the rest
+	masked := string(local[0]) + "***"
+	return masked + "@" + parts[1]
+}
+
+// MaskPhone masks a phone number for display, showing the prefix and last 4 digits.
+// Designed for Indonesian phone numbers but works with any format.
+// Returns empty string if input is empty or too short.
+//
+// Example:
+//
+//	MaskPhone("+6281234567890")  // "+62812****7890"
+//	MaskPhone("081234567890")   // "08123****7890"
+func MaskPhone(phone string) string {
+	if len(phone) < 8 {
+		return ""
+	}
+	// Show first (len-4)/2+1 chars, mask middle, show last 4
+	visiblePrefix := len(phone) - 4
+	if visiblePrefix > 5 {
+		visiblePrefix = 5
+	}
+	masked := phone[:visiblePrefix] + strings.Repeat("*", len(phone)-visiblePrefix-4) + phone[len(phone)-4:]
+	return masked
+}
+
+// Truncate truncates a string to maxLen characters and appends "..." if truncated.
+// If the string is shorter than or equal to maxLen, it is returned unchanged.
+// maxLen must be >= 3 (to fit the ellipsis); otherwise returns original string.
+//
+// Example:
+//
+//	Truncate("Hello, World!", 10) // "Hello, ..."
+//	Truncate("Hi", 10)           // "Hi"
+func Truncate(s string, maxLen int) string {
+	if maxLen < 3 || len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// PadLeft pads a string on the left side to reach the desired length.
+// If the string is already longer than or equal to length, it is returned unchanged.
+//
+// Example:
+//
+//	PadLeft("42", 5, '0')   // "00042"
+//	PadLeft("hello", 3, ' ') // "hello"
+func PadLeft(s string, length int, pad rune) string {
+	if len(s) >= length {
+		return s
+	}
+	return strings.Repeat(string(pad), length-len(s)) + s
+}
+
+// PadRight pads a string on the right side to reach the desired length.
+// If the string is already longer than or equal to length, it is returned unchanged.
+//
+// Example:
+//
+//	PadRight("42", 5, '0')   // "42000"
+//	PadRight("hello", 3, ' ') // "hello"
+func PadRight(s string, length int, pad rune) string {
+	if len(s) >= length {
+		return s
+	}
+	return s + strings.Repeat(string(pad), length-len(s))
+}
+
+// Dollar formats a float64 amount as a USD currency string (e.g. 1,234,567.89).
+// Uses comma (,) as thousand separator and dot (.) as decimal separator.
+// Always shows exactly 2 decimal places.
+//
+// Example:
+//
+//	Dollar(1234567.89) // "1,234,567.89"
+//	Dollar(-5000)      // "-5,000.00"
+func Dollar(amount float64) string {
+	return formatNumber(amount, 2, ".", ",")
 }

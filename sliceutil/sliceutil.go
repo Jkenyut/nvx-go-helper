@@ -199,13 +199,20 @@ func Difference[T comparable](a, b []T) []T {
 }
 
 // Reverse reverses the elements of the slice in place.
-// It modifies the original slice and returns it for convenience.
+// Example:
+//
+//	Reverse([]int{1, 2, 3}) // returns []int{3, 2, 1}, original unchanged
 func Reverse[T any](slice []T) []T {
-	for i, j := 0, len(slice)-1; i < j; i, j = i+1, j-1 {
-		slice[i], slice[j] = slice[j], slice[i]
+	if len(slice) == 0 {
+		return []T{}
 	}
-	return slice
+	result := make([]T, len(slice))
+	for i, j := 0, len(slice)-1; j >= 0; i, j = i+1, j-1 {
+		result[i] = slice[j]
+	}
+	return result
 }
+
 
 // Flatten converts a two-dimensional slice (slice of slices) into a single one-dimensional slice.
 func Flatten[T any](slices [][]T) []T {
@@ -272,6 +279,92 @@ func MergeSlices[T any](slices ...[]T) []T {
 	result := make([]T, 0, totalLen)
 	for i := range slices {
 		result = append(result, slices[i]...)
+	}
+	return result
+}
+
+// Reduce reduces a slice to a single value by applying the given function
+// to each element, accumulating the result starting from the initial value.
+//
+// Example:
+//
+//	sum := Reduce([]int{1, 2, 3}, 0, func(acc, v int) int { return acc + v }) // 6
+func Reduce[T any, U any](slice []T, initial U, fn func(U, T) U) U {
+	result := initial
+	for i := range slice {
+		result = fn(result, slice[i])
+	}
+	return result
+}
+
+// FlatMap maps each element to a slice and flattens the result into a single slice.
+//
+// Example:
+//
+//	FlatMap([]string{"hello", "world"}, func(s string) []byte { return []byte(s) })
+func FlatMap[T, U any](slice []T, fn func(T) []U) []U {
+	if len(slice) == 0 {
+		return []U{}
+	}
+	var result []U
+	for i := range slice {
+		result = append(result, fn(slice[i])...)
+	}
+	if result == nil {
+		return []U{}
+	}
+	return result
+}
+
+// IndexOf returns the index of the first occurrence of elem in the slice, or -1 if not found.
+//
+// Example:
+//
+//	IndexOf([]string{"a", "b", "c"}, "b") // 1
+//	IndexOf([]string{"a", "b", "c"}, "x") // -1
+func IndexOf[T comparable](slice []T, elem T) int {
+	for i := range slice {
+		if slice[i] == elem {
+			return i
+		}
+	}
+	return -1
+}
+
+// Last returns the last element of the slice and true, or zero value and false if the slice is empty.
+//
+// Example:
+//
+//	Last([]int{1, 2, 3}) // (3, true)
+//	Last([]int{})        // (0, false)
+func Last[T any](slice []T) (T, bool) {
+	if len(slice) == 0 {
+		var zero T
+		return zero, false
+	}
+	return slice[len(slice)-1], true
+}
+
+// Compact removes zero-value elements from a slice.
+// Returns a new slice without any elements that are equal to the zero value of type T.
+//
+// Example:
+//
+//	Compact([]string{"a", "", "b", "", "c"}) // ["a", "b", "c"]
+//	Compact([]int{0, 1, 2, 0, 3})            // [1, 2, 3]
+func Compact[T comparable](slice []T) []T {
+	if len(slice) == 0 {
+		return []T{}
+	}
+	var zero T
+	result := make([]T, 0, len(slice))
+	for i := range slice {
+		if slice[i] != zero {
+			result = append(result, slice[i])
+		}
+	}
+	if len(result) == 0 {
+		return []T{}
 	}
 	return result
 }

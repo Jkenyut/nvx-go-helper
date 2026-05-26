@@ -19,11 +19,11 @@ func TestActivityContext(t *testing.T) {
 	})
 
 	t.Run("APIKey", func(t *testing.T) {
-		apiKey := "api-456"
-		ctx = WithAPIKey(ctx, apiKey)
+		key := "api-456"
+		ctx = WithAPIKey(ctx, key)
 		got, ok := GetAPIKey(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, apiKey, got)
+		assert.Equal(t, key, got)
 	})
 
 	t.Run("RequestID", func(t *testing.T) {
@@ -35,38 +35,60 @@ func TestActivityContext(t *testing.T) {
 	})
 
 	t.Run("UserID", func(t *testing.T) {
-		userID := "user-001"
-		ctx = WithUserID(ctx, userID)
+		uid := "user-001"
+		ctx = WithUserID(ctx, uid)
 		got, ok := GetUserID(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, userID, got)
+		assert.Equal(t, uid, got)
 	})
 
 	t.Run("UserType", func(t *testing.T) {
-		userType := "admin"
-		ctx = WithUserType(ctx, userType)
+		utype := "admin"
+		ctx = WithUserType(ctx, utype)
 		got, ok := GetUserType(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, userType, got)
+		assert.Equal(t, utype, got)
 	})
 
 	t.Run("UserIP", func(t *testing.T) {
-		userIP := "127.0.0.1"
-		ctx = WithUserIP(ctx, userIP)
+		uip := "127.0.0.1"
+		ctx = WithUserIP(ctx, uip)
 		got, ok := GetUserIP(ctx)
 		assert.True(t, ok)
-		assert.Equal(t, userIP, got)
+		assert.Equal(t, uip, got)
 	})
 
 	t.Run("WithCustomFields", func(t *testing.T) {
-		key := "custom-key"
+		k := "custom-key"
 		val := "custom-value"
-		ctx = WithCustomFields(ctx, key, val)
+		ctx = WithCustomFields(ctx, k, val)
 
-		// Verify with GetFieldValueFromContext
-		got, ok := GetFieldValueFromContext[string](ctx, key)
+		// Verify with GetCustomField
+		got, ok := GetCustomField(ctx, k)
 		assert.True(t, ok)
 		assert.Equal(t, val, got)
+	})
+
+	t.Run("GetCustomField_NotFound", func(t *testing.T) {
+		got, ok := GetCustomField(ctx, "nonexistent")
+		assert.False(t, ok)
+		assert.Nil(t, got)
+	})
+
+	t.Run("CustomFields_NoCollision_With_RawString", func(t *testing.T) {
+		// Ensure customKey("foo") does NOT collide with raw string "foo"
+		rawKey := "collision-test"
+		ctx2 := context.WithValue(context.Background(), rawKey, "raw-value")
+		ctx2 = WithCustomFields(ctx2, rawKey, "custom-value")
+
+		// Raw string key should still return its own value
+		rawVal := ctx2.Value(rawKey)
+		assert.Equal(t, "raw-value", rawVal)
+
+		// Custom field should return its own value
+		customVal, ok := GetCustomField(ctx2, rawKey)
+		assert.True(t, ok)
+		assert.Equal(t, "custom-value", customVal)
 	})
 
 	t.Run("GetAllFieldsFromContext", func(t *testing.T) {
@@ -78,16 +100,28 @@ func TestActivityContext(t *testing.T) {
 		assert.Equal(t, "admin", fields["nvx_user_type"])
 		assert.Equal(t, "127.0.0.1", fields["nvx_user_ip"])
 	})
+
+	t.Run("GetAllFieldsFromContext_Empty", func(t *testing.T) {
+		emptyCtx := context.Background()
+		fields := GetAllFieldsFromContext(emptyCtx)
+		assert.Empty(t, fields)
+	})
+
+	t.Run("GetTransactionID_NotSet", func(t *testing.T) {
+		emptyCtx := context.Background()
+		_, ok := GetTransactionID(emptyCtx)
+		assert.False(t, ok)
+	})
 }
 
 func TestGetFieldValueFromContext(t *testing.T) {
 	ctx := context.Background()
 
-	// Test with internal key (TransactionID is of type activity.key)
+	// Test with internal key via WithTransactionID
 	trxID := "trx-generic-123"
 	ctx = WithTransactionID(ctx, trxID)
 
-	got, ok := GetFieldValueFromContext[string](ctx, TransactionID)
+	got, ok := GetFieldValueFromContext[string](ctx, transactionID)
 	assert.True(t, ok)
 	assert.Equal(t, trxID, got)
 
