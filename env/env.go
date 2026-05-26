@@ -5,6 +5,7 @@
 package env
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -43,6 +44,23 @@ func GetInt(key string, fallback int) int {
 		return fallback
 	}
 	return i
+}
+
+// GetFloat64 returns the env value as float64, or fallback if empty or invalid.
+//
+// Example:
+//
+//	rate := env.GetFloat64("TAX_RATE", 0.11)
+func GetFloat64(key string, fallback float64) float64 {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	f, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		return fallback
+	}
+	return f
 }
 
 // GetBool returns true if the env value is "true", "1", "yes", or "on" (case insensitive).
@@ -86,4 +104,44 @@ func GetDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+// GetStringSlice returns the env value split by the given separator, or fallback if empty.
+// Each element is trimmed of whitespace.
+//
+// Example:
+//
+//	origins := env.GetStringSlice("CORS_ORIGINS", ",", []string{"http://localhost:3000"})
+//	// CORS_ORIGINS="http://a.com, http://b.com" → ["http://a.com", "http://b.com"]
+func GetStringSlice(key string, separator string, fallback []string) []string {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	parts := strings.Split(val, separator)
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	if len(result) == 0 {
+		return fallback
+	}
+	return result
+}
+
+// MustGet returns the env value as string, or panics if not set.
+// Use ONLY for required configuration at application startup (e.g., in main or init).
+//
+// Example:
+//
+//	dbURL := env.MustGet("DATABASE_URL") // panics if not set
+func MustGet(key string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		panic(fmt.Sprintf("env: required environment variable %q is not set", key))
+	}
+	return val
 }

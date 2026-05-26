@@ -40,6 +40,37 @@ func IsSafeImage(data []byte) bool {
 	}
 }
 
+// IsSafeDocument checks if the data represents a valid document format (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX).
+// Uses magic bytes detection via http.DetectContentType.
+func IsSafeDocument(data []byte) bool {
+	switch GetMimeType(data) {
+	case "application/pdf",
+		"application/msword",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/vnd.ms-excel",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.ms-powerpoint",
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"text/plain",
+		"text/csv",
+		"application/rtf":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsSafeVideo checks if the data represents a valid video format (MP4, WebM, OGG, MOV).
+// Uses magic bytes detection via http.DetectContentType.
+func IsSafeVideo(data []byte) bool {
+	switch GetMimeType(data) {
+	case "video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/mpeg":
+		return true
+	default:
+		return false
+	}
+}
+
 // FormatFileSize converts bytes to a human-readable string representation (e.g., "1.5 MB").
 // It uses binary prefix calculations (1 KB = 1024 B).
 func FormatFileSize(b int64) string {

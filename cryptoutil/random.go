@@ -85,26 +85,41 @@ func Numbers(length int) string {
 
 // stringWithCharset is the core implementation shared by all string functions.
 // It is intentionally unexported — users should use the semantic helpers above.
+//
+// Uses rejection sampling to eliminate modulo bias: random bytes that would
+// cause uneven distribution are discarded and re-sampled. This ensures every
+// character in the charset has exactly equal probability.
 func stringWithCharset(length int, charset string) string {
 	if length <= 0 {
 		return ""
 	}
 
-	b := make([]byte, length)
-	// Bulk read from crypto/rand to minimize syscalls (orders of magnitude faster)
-	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand.Read failed: " + err.Error())
+	charsetLen := byte(len(charset))
+	// Calculate the largest multiple of charsetLen that fits in a byte.
+	// Any random byte >= maxValid would introduce bias and must be rejected.
+	maxValid := 256 - (256 % int(charsetLen)) // e.g., for 36 chars: 252
+
+	result := make([]byte, length)
+	buf := make([]byte, length+(length/4)+16) // over-allocate to reduce syscalls
+
+	filled := 0
+	for filled < length {
+		if _, err := rand.Read(buf); err != nil {
+			panic("crypto/rand.Read failed: " + err.Error())
+		}
+		for _, b := range buf {
+			if filled >= length {
+				break
+			}
+			if int(b) < maxValid {
+				result[filled] = charset[b%charsetLen]
+				filled++
+			}
+			// else: reject this byte (would cause bias)
+		}
 	}
 
-	charsetLen := len(charset)
-	for i := 0; i < length; i++ {
-		// Map the random byte to a character in the charset safely.
-		// Note: Using modulo introduces a tiny, cryptographically negligible bias
-		// when 256 % charsetLen != 0. For OTPs, Tokens, and IDs this is the enterprise standard tradeoff for extreme speed.
-		b[i] = charset[int(b[i])%charsetLen]
-	}
-
-	return string(b)
+	return string(result)
 }
 
 // GenerateKey generates a cryptographically secure random key.
@@ -122,7 +137,7 @@ func stringWithCharset(length int, charset string) string {
 //	}
 //	fmt.Println(key)  // "Q3J5cHRvR3JhcGhpY2FsbHlTZWN1cmVLZXk="
 func GenerateKey(length uint32) (string, error) {
-	if length <= 0 {
+	if length == 0 {
 		return "", fmt.Errorf("key length must be positive, got %d", length)
 	}
 
@@ -149,7 +164,7 @@ func GenerateKey(length uint32) (string, error) {
 //	}
 //	fmt.Println(key)  // "a1b2c3d4e5f6..."
 func GenerateKeyHex(length uint32) (string, error) {
-	if length <= 0 {
+	if length == 0 {
 		return "", fmt.Errorf("key length must be positive, got %d", length)
 	}
 
@@ -176,7 +191,7 @@ func GenerateKeyHex(length uint32) (string, error) {
 //	}
 //	fmt.Printf("Generated %d bytes\n", len(key))
 func GenerateKeyRaw(length uint32) ([]byte, error) {
-	if length <= 0 {
+	if length == 0 {
 		return nil, fmt.Errorf("key length must be positive, got %d", length)
 	}
 

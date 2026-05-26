@@ -40,3 +40,38 @@ func Bool(b bool) *bool {
 func Time(t time.Time) *time.Time {
 	return &t
 }
+
+// Deref safely dereferences a pointer.
+// Returns the zero value of T if the pointer is nil.
+//
+// Example:
+//
+//	var name *string = nil
+//	val := pointer.Deref(name)  // "" (zero value for string)
+//
+//	name = pointer.Of("John")
+//	val = pointer.Deref(name)   // "John"
+func Deref[T any](p *T) T {
+	if p == nil {
+		var zero T
+		return zero
+	}
+	return *p
+}
+
+// DerefOr safely dereferences a pointer with a fallback default value.
+// Returns defaultVal if the pointer is nil, otherwise returns the pointed-to value.
+//
+// Example:
+//
+//	var count *int = nil
+//	val := pointer.DerefOr(count, 42)  // 42
+//
+//	count = pointer.Of(10)
+//	val = pointer.DerefOr(count, 42)   // 10
+func DerefOr[T any](p *T, defaultVal T) T {
+	if p == nil {
+		return defaultVal
+	}
+	return *p
+}

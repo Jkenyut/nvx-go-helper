@@ -51,6 +51,7 @@ func TestValidator(t *testing.T) {
 		assert.Nil(t, GetErrors(nil))
 		assert.Nil(t, GetErrors(assert.AnError))
 	})
+
 	t.Run("GetErrorFirstMsg", func(t *testing.T) {
 		type TestStruct struct {
 			Email string `validate:"required,email" json:"email"`
@@ -82,7 +83,6 @@ func TestValidator(t *testing.T) {
 		}
 
 		err := Struct(TestStruct{Email: "not-an-email", Age: 10})
-		// The error should contain both translations
 		fullMsg := GetErrorsFullMsg(err)
 		assert.Contains(t, fullMsg, "email: Invalid email address format")
 		assert.Contains(t, fullMsg, "age: Must be greater than or equal to 18")
@@ -95,8 +95,14 @@ func TestValidator(t *testing.T) {
 		assert.Equal(t, "database timeout", GetErrorsFullMsg(genericErr))
 	})
 
+	t.Run("Nil error returns empty", func(t *testing.T) {
+		assert.Equal(t, "", GetErrorFirstStr(nil))
+		assert.Equal(t, "", GetErrorsFullStr(nil))
+		assert.Equal(t, "", GetErrorFirstMsg(nil))
+		assert.Equal(t, "", GetErrorsFullMsg(nil))
+	})
+
 	t.Run("RegisterCustomValidation", func(t *testing.T) {
-		// Register a fake custom tag with a parameter message
 		err := RegisterCustomValidation("is_awesome", func(fl v10.FieldLevel) bool {
 			return fl.Field().String() == "awesome"
 		}, "Must be awesome exactly like %s")
@@ -106,26 +112,35 @@ func TestValidator(t *testing.T) {
 			Title string `validate:"is_awesome=Gojek" json:"title"`
 		}
 
-		// Valid case
 		err = Struct(TestCustom{Title: "awesome"})
 		assert.NoError(t, err)
 
-		// Invalid case
 		err = Struct(TestCustom{Title: "boring"})
 		assert.Error(t, err)
 		assert.Contains(t, GetErrorFirstMsg(err), "title: Must be awesome exactly like Gojek")
 	})
+
+	t.Run("RegisterCustomValidation_NoParam", func(t *testing.T) {
+		err := RegisterCustomValidation("is_cool", func(fl v10.FieldLevel) bool {
+			return fl.Field().String() == "cool"
+		}, "Must be cool")
+		assert.NoError(t, err)
+
+		type TestStruct struct {
+			Status string `validate:"is_cool" json:"status"`
+		}
+
+		err = Struct(TestStruct{Status: "not cool"})
+		assert.Error(t, err)
+		assert.Equal(t, "status: Must be cool", GetErrorFirstMsg(err))
+	})
 }
 
 func TestValidatorInterface(t *testing.T) {
-	// Create a new fresh instance
 	val := New()
 	assert.NotNil(t, val)
-
-	// Ensure Raw() returns the underlying *v10.Validate
 	assert.NotNil(t, val.Raw())
 
-	// Register a custom validation on this specific instance
 	err := val.RegisterCustomValidation("is_magic", func(fl v10.FieldLevel) bool {
 		return fl.Field().String() == "abracadabra"
 	}, "Must recite the magic word %s")
@@ -135,12 +150,336 @@ func TestValidatorInterface(t *testing.T) {
 		Word string `validate:"is_magic=please" json:"word"`
 	}
 
-	// Test invalid
 	err = val.Struct(Spell{Word: "hello"})
 	assert.Error(t, err)
 	assert.Equal(t, "word: Must recite the magic word please", val.GetErrorFirstMsg(err))
 
-	// Test valid
 	err = val.Struct(Spell{Word: "abracadabra"})
 	assert.NoError(t, err)
+}
+
+func TestAllValidationTags(t *testing.T) {
+	val := New()
+
+	t.Run("min", func(t *testing.T) {
+		type S struct {
+			V string `validate:"min=3" json:"v"`
+		}
+		err := val.Struct(S{V: "ab"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Minimum length or value is 3")
+	})
+
+	t.Run("max", func(t *testing.T) {
+		type S struct {
+			V string `validate:"max=3" json:"v"`
+		}
+		err := val.Struct(S{V: "abcde"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Maximum length or value is 3")
+	})
+
+	t.Run("len", func(t *testing.T) {
+		type S struct {
+			V string `validate:"len=3" json:"v"`
+		}
+		err := val.Struct(S{V: "ab"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Length must be exactly 3")
+	})
+
+	t.Run("lte", func(t *testing.T) {
+		type S struct {
+			V int `validate:"lte=10" json:"v"`
+		}
+		err := val.Struct(S{V: 20})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be less than or equal to 10")
+	})
+
+	t.Run("gt", func(t *testing.T) {
+		type S struct {
+			V int `validate:"gt=10" json:"v"`
+		}
+		err := val.Struct(S{V: 5})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be greater than 10")
+	})
+
+	t.Run("lt", func(t *testing.T) {
+		type S struct {
+			V int `validate:"lt=10" json:"v"`
+		}
+		err := val.Struct(S{V: 20})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be less than 10")
+	})
+
+	t.Run("url", func(t *testing.T) {
+		type S struct {
+			V string `validate:"url" json:"v"`
+		}
+		err := val.Struct(S{V: "not-a-url"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Invalid URL format")
+	})
+
+	t.Run("uuid", func(t *testing.T) {
+		type S struct {
+			V string `validate:"uuid" json:"v"`
+		}
+		err := val.Struct(S{V: "not-a-uuid"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Invalid UUID format")
+	})
+
+	t.Run("alphanum", func(t *testing.T) {
+		type S struct {
+			V string `validate:"alphanum" json:"v"`
+		}
+		err := val.Struct(S{V: "abc!123"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Can only contain alphanumeric characters")
+	})
+
+	t.Run("alpha", func(t *testing.T) {
+		type S struct {
+			V string `validate:"alpha" json:"v"`
+		}
+		err := val.Struct(S{V: "abc123"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Can only contain alphabetic characters")
+	})
+
+	t.Run("numeric", func(t *testing.T) {
+		type S struct {
+			V string `validate:"numeric" json:"v"`
+		}
+		err := val.Struct(S{V: "abc"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid numeric value")
+	})
+
+	t.Run("boolean", func(t *testing.T) {
+		type S struct {
+			V string `validate:"boolean" json:"v"`
+		}
+		err := val.Struct(S{V: "maybe"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a boolean value")
+	})
+
+	t.Run("contains", func(t *testing.T) {
+		type S struct {
+			V string `validate:"contains=hello" json:"v"`
+		}
+		err := val.Struct(S{V: "world"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must contain the text 'hello'")
+	})
+
+	t.Run("excludes", func(t *testing.T) {
+		type S struct {
+			V string `validate:"excludes=bad" json:"v"`
+		}
+		err := val.Struct(S{V: "this is bad"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must not contain the text 'bad'")
+	})
+
+	t.Run("startswith", func(t *testing.T) {
+		type S struct {
+			V string `validate:"startswith=hello" json:"v"`
+		}
+		err := val.Struct(S{V: "world"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must start with 'hello'")
+	})
+
+	t.Run("endswith", func(t *testing.T) {
+		type S struct {
+			V string `validate:"endswith=world" json:"v"`
+		}
+		err := val.Struct(S{V: "hello"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must end with 'world'")
+	})
+
+	t.Run("eq", func(t *testing.T) {
+		type S struct {
+			V string `validate:"eq=exact" json:"v"`
+		}
+		err := val.Struct(S{V: "wrong"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be equal to exact")
+	})
+
+	t.Run("ne", func(t *testing.T) {
+		type S struct {
+			V string `validate:"ne=forbidden" json:"v"`
+		}
+		err := val.Struct(S{V: "forbidden"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must not be equal to forbidden")
+	})
+
+	t.Run("ip", func(t *testing.T) {
+		type S struct {
+			V string `validate:"ip" json:"v"`
+		}
+		err := val.Struct(S{V: "not-an-ip"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid IP address")
+	})
+
+	t.Run("base64", func(t *testing.T) {
+		type S struct {
+			V string `validate:"base64" json:"v"`
+		}
+		err := val.Struct(S{V: "not!!base64"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid Base64 string")
+	})
+
+	t.Run("json", func(t *testing.T) {
+		type S struct {
+			V string `validate:"json" json:"v"`
+		}
+		err := val.Struct(S{V: "not json"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid JSON string")
+	})
+
+	t.Run("datetime", func(t *testing.T) {
+		type S struct {
+			V string `validate:"datetime=2006-01-02" json:"v"`
+		}
+		err := val.Struct(S{V: "not-a-date"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid datetime format")
+	})
+
+	t.Run("eqfield", func(t *testing.T) {
+		type S struct {
+			Password        string `validate:"required" json:"password"`
+			ConfirmPassword string `validate:"eqfield=Password" json:"confirm_password"`
+		}
+		err := val.Struct(S{Password: "abc", ConfirmPassword: "xyz"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must match Password field")
+	})
+
+	t.Run("containsany", func(t *testing.T) {
+		type S struct {
+			V string `validate:"containsany=!@#" json:"v"`
+		}
+		err := val.Struct(S{V: "plain"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must contain at least one of the following characters")
+	})
+
+	t.Run("excludesall", func(t *testing.T) {
+		type S struct {
+			V string `validate:"excludesall=!@#" json:"v"`
+		}
+		err := val.Struct(S{V: "has!mark"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must not contain any of the following characters")
+	})
+
+	t.Run("number", func(t *testing.T) {
+		type S struct {
+			V string `validate:"number" json:"v"`
+		}
+		err := val.Struct(S{V: "abc"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid number")
+	})
+}
+
+func TestIndonesianValidations(t *testing.T) {
+	val := New()
+
+	t.Run("NIK Valid", func(t *testing.T) {
+		type S struct {
+			NIK string `validate:"nik" json:"nik"`
+		}
+		err := val.Struct(S{NIK: "3201010101010001"})
+		assert.NoError(t, err)
+	})
+
+	t.Run("NIK Invalid", func(t *testing.T) {
+		type S struct {
+			NIK string `validate:"nik" json:"nik"`
+		}
+		err := val.Struct(S{NIK: "123"})
+		assert.Error(t, err)
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid Indonesian NIK")
+	})
+
+	t.Run("NPWP Valid", func(t *testing.T) {
+		type S struct {
+			NPWP string `validate:"npwp" json:"npwp"`
+		}
+		err := val.Struct(S{NPWP: "123456789012345"})
+		assert.NoError(t, err)
+	})
+
+	t.Run("NPWP Valid with dots/dashes", func(t *testing.T) {
+		type S struct {
+			NPWP string `validate:"npwp" json:"npwp"`
+		}
+		err := val.Struct(S{NPWP: "12.345.678.9-012.345"})
+		assert.NoError(t, err)
+	})
+
+	t.Run("NPWP Invalid", func(t *testing.T) {
+		type S struct {
+			NPWP string `validate:"npwp" json:"npwp"`
+		}
+		err := val.Struct(S{NPWP: "123"})
+		assert.Error(t, err)
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid Indonesian NPWP")
+	})
+
+	t.Run("Phone ID Valid +62", func(t *testing.T) {
+		type S struct {
+			Phone string `validate:"phone_id" json:"phone"`
+		}
+		err := val.Struct(S{Phone: "+6281234567890"})
+		assert.NoError(t, err)
+	})
+
+	t.Run("Phone ID Valid 08", func(t *testing.T) {
+		type S struct {
+			Phone string `validate:"phone_id" json:"phone"`
+		}
+		err := val.Struct(S{Phone: "081234567890"})
+		assert.NoError(t, err)
+	})
+
+	t.Run("Phone ID Invalid", func(t *testing.T) {
+		type S struct {
+			Phone string `validate:"phone_id" json:"phone"`
+		}
+		err := val.Struct(S{Phone: "123"})
+		assert.Error(t, err)
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid Indonesian phone number")
+	})
+
+	t.Run("nefield", func(t *testing.T) {
+		type S struct {
+			Old string `validate:"required" json:"old"`
+			New string `validate:"nefield=Old" json:"new"`
+		}
+		err := val.Struct(S{Old: "same", New: "same"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must not match Old field")
+	})
+
+	t.Run("mac", func(t *testing.T) {
+		type S struct {
+			V string `validate:"mac" json:"v"`
+		}
+		err := val.Struct(S{V: "not-a-mac"})
+		assert.Contains(t, val.GetErrorFirstMsg(err), "Must be a valid MAC address")
+	})
+
+	t.Run("Unknown tag fallback", func(t *testing.T) {
+		err := val.Raw().RegisterValidation("custom_xyz", func(fl v10.FieldLevel) bool {
+			return false
+		})
+		assert.NoError(t, err)
+
+		type S struct {
+			V string `validate:"custom_xyz" json:"v"`
+		}
+		verr := val.Struct(S{V: "test"})
+		msg := val.GetErrorFirstMsg(verr)
+		assert.Contains(t, msg, "Failed on custom_xyz validation")
+	})
+}
+
+func TestGetErrorsFullStr(t *testing.T) {
+	type S struct {
+		Name  string `validate:"required" json:"name"`
+		Email string `validate:"required,email" json:"email"`
+	}
+	err := Struct(S{})
+	fullStr := GetErrorsFullStr(err)
+	assert.Contains(t, fullStr, "name: required")
+	assert.Contains(t, fullStr, "email: required")
 }
