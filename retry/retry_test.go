@@ -106,7 +106,7 @@ func TestDo_RetryIf(t *testing.T) {
 			return errors.New("temporary")
 		}
 		return permanentErr
-	}, WithMaxAttempts(5), RetryIf(func(err error) bool {
+	}, WithMaxAttempts(5), If(func(err error) bool {
 		return err.Error() != "permanent"
 	}))
 	assert.ErrorIs(t, err, permanentErr)

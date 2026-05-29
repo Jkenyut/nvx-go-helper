@@ -213,7 +213,6 @@ func Reverse[T any](slice []T) []T {
 	return result
 }
 
-
 // Flatten converts a two-dimensional slice (slice of slices) into a single one-dimensional slice.
 func Flatten[T any](slices [][]T) []T {
 	if len(slices) == 0 {

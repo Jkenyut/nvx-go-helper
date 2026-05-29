@@ -152,6 +152,7 @@ func TestNew(t *testing.T) {
 		})
 	}
 }
+
 func TestOffset(t *testing.T) {
 	tests := []struct {
 		page, limit, expected int
@@ -233,6 +234,7 @@ func TestLinks(t *testing.T) {
 		})
 	}
 }
+
 func BenchmarkNew(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = New("2", "25", 1000)

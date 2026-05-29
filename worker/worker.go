@@ -34,8 +34,8 @@ type Result[K comparable, R any] struct {
 	Err   error // Error result (if any) or panic error
 }
 
-// WorkerPoolConfig holds configuration options for the worker pool.
-type WorkerPoolConfig struct {
+// PoolConfig holds configuration options for the worker pool.
+type PoolConfig struct {
 	NumWorkers    int                        // Concurrent workers count (default: 2)
 	WorkerTimeout time.Duration              // Timeout for a single job execution (default: 15s)
 	GlobalTimeout time.Duration              // Total timeout for the entire batch (default: 30s)
@@ -65,9 +65,8 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 	jobs []Job[K, T],
 	workerFunc func(context.Context, K, T) (R, error),
 	globalSemaphore chan struct{},
-	cfg WorkerPoolConfig,
+	cfg PoolConfig,
 ) <-chan Result[K, R] {
-
 	if len(jobs) == 0 {
 		outCh := make(chan Result[K, R])
 		close(outCh)
@@ -97,7 +96,7 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 		outCh := make(chan Result[K, R], len(jobs))
 		go func() {
 			errToSend := ErrSkipped
-			if cause := context.Cause(ctx); cause != nil && cause != context.Canceled {
+			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
 				errToSend = fmt.Errorf("%w: %w", ErrSkipped, cause)
 			}
 			for _, job := range jobs {
@@ -156,7 +155,7 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 	}
 
 	getSkipErr := func() error {
-		if cause := context.Cause(poolCtx); cause != nil && cause != context.Canceled {
+		if cause := context.Cause(poolCtx); cause != nil && !errors.Is(cause, context.Canceled) {
 			return fmt.Errorf("%w: %w", ErrSkipped, cause)
 		}
 		return ErrSkipped
@@ -259,9 +258,8 @@ func RunGenericWorkerPool[K comparable, T any, R any](
 	jobs []Job[K, T],
 	workerFunc func(context.Context, K, T) (R, error),
 	globalSemaphore chan struct{},
-	cfg WorkerPoolConfig,
+	cfg PoolConfig,
 ) ([]Result[K, R], error) {
-
 	outCh := RunGenericWorkerPoolStream(ctx, jobs, workerFunc, globalSemaphore, cfg)
 
 	var results []Result[K, R]
