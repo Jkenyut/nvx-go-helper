@@ -1,3 +1,4 @@
+// Package retry provides utility functions for retrying operations.
 package retry
 
 import (
@@ -85,9 +86,9 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
-// RetryIf allows specifying a custom condition to determine if an error should trigger a retry.
+// If allows specifying a custom condition to determine if an error should trigger a retry.
 // If the function returns false, Do will return immediately with the error.
-func RetryIf(condition func(err error) bool) Option {
+func If(condition func(err error) bool) Option {
 	return func(c *config) {
 		c.retryIf = condition
 	}
@@ -116,7 +117,7 @@ func newConfig(opts ...Option) *config {
 		jitter:      0,
 		maxDelay:    0,
 		ctx:         context.Background(),
-		retryIf: func(err error) bool {
+		retryIf: func(_ error) bool {
 			return true // Retry on all errors by default
 		},
 	}

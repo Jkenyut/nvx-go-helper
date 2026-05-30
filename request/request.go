@@ -1,3 +1,4 @@
+// Package request provides utility functions for handling HTTP requests.
 package request
 
 import (
@@ -20,7 +21,9 @@ func BindJSON(r *http.Request, dest interface{}) error {
 		return errors.New("unsupported content type: must be application/json")
 	}
 
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	// Use sonic's streaming decoder
 	decoder := sonic.ConfigDefault.NewDecoder(r.Body)

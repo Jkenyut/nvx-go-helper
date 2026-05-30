@@ -314,6 +314,7 @@ func WithMessageData(ctx context.Context, message string, status int, data any) 
 	return Response{Meta: NewMeta(ctx, success, message, status), Data: data}
 }
 
+// JSONMarshal marshals the Response to JSON bytes.
 func (r Response) JSONMarshal() []byte {
 	if r.Meta.StatusCode == 0 {
 		r.Meta.StatusCode = 200
@@ -338,6 +339,7 @@ func (r Response) JSONMarshal() []byte {
 	return resp
 }
 
+// JSONEncoder writes the JSON encoding of Response to the stream.
 func (r Response) JSONEncoder(w io.Writer) {
 	if r.Meta.StatusCode == 0 {
 		r.Meta.StatusCode = 200

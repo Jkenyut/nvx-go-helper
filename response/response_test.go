@@ -190,7 +190,7 @@ func TestResponse_JSONMarshal_Fallback(t *testing.T) {
 
 func TestResponse_JSONEncoder(t *testing.T) {
 	ctx := activity.WithRequestID(context.Background(), "test-enc-123")
-	
+
 	t.Run("Valid", func(t *testing.T) {
 		resp := OK(ctx, "ok", "data")
 		var buf bytes.Buffer
@@ -211,4 +211,3 @@ func TestResponse_JSONEncoder(t *testing.T) {
 		assert.Contains(t, jsonStr, "internal server error: failed to encode response data")
 	})
 }
-

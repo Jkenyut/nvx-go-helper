@@ -230,7 +230,7 @@ func ToString(v any) string {
 		// reflect.ValueOf(v).IsNil() panics on non-nillable kinds, so we must check first.
 		rv := reflect.ValueOf(v)
 		switch rv.Kind() {
-		case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func:
+		case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func:
 			if rv.IsNil() {
 				return ""
 			}

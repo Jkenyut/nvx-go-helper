@@ -22,7 +22,7 @@ func TestEmptyJobs(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{},
+		PoolConfig{},
 	)
 
 	count := 0
@@ -52,7 +52,7 @@ func TestDuplicateJobIDs(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{},
+		PoolConfig{},
 	)
 
 	count := 0
@@ -98,7 +98,7 @@ func TestNormalOperation(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{
+		PoolConfig{
 			NumWorkers:    3,
 			GlobalTimeout: 5 * time.Second, // Ensure enough time
 		},
@@ -158,7 +158,7 @@ func TestParentContextCancelled(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{},
+		PoolConfig{},
 	)
 
 	count := 0
@@ -200,7 +200,7 @@ func TestPanicRecovery(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{NumWorkers: 2},
+		PoolConfig{NumWorkers: 2},
 	)
 
 	count := 0
@@ -264,7 +264,7 @@ func TestStopOnError(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{
+		PoolConfig{
 			NumWorkers:  2,
 			StopOnError: true,
 		},
@@ -327,7 +327,7 @@ func TestGlobalTimeout(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{
+		PoolConfig{
 			NumWorkers:    2,
 			GlobalTimeout: 100 * time.Millisecond,
 		},
@@ -376,7 +376,7 @@ func TestWorkerTimeout(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{
+		PoolConfig{
 			NumWorkers:    2,
 			WorkerTimeout: 100 * time.Millisecond,
 		},
@@ -433,7 +433,7 @@ func TestNoDuplicateResults(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{NumWorkers: 10},
+		PoolConfig{NumWorkers: 10},
 	)
 
 	resultMap := make(map[int]int) // ID -> count
@@ -482,7 +482,7 @@ func TestLargeDatasetStopOnError(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{
+		PoolConfig{
 			NumWorkers:  4,
 			StopOnError: true,
 		},
@@ -555,7 +555,7 @@ func TestLargeDatasetTimeout(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{
+		PoolConfig{
 			NumWorkers:    4,
 			GlobalTimeout: 100 * time.Millisecond, // Fast timeout
 		},
@@ -604,7 +604,7 @@ func BenchmarkWorkerPool(b *testing.B) {
 			jobs,
 			workerFunc,
 			nil,
-			WorkerPoolConfig{NumWorkers: 10},
+			PoolConfig{NumWorkers: 10},
 		)
 
 		for range results {
@@ -633,7 +633,7 @@ func TestRunGenericWorkerPoolSynchronous(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{NumWorkers: 2},
+		PoolConfig{NumWorkers: 2},
 	)
 
 	if len(results) != 3 {
@@ -685,12 +685,11 @@ func TestRunGenericWorkerPoolOrdered(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{
+		PoolConfig{
 			NumWorkers:    5,
 			PreserveOrder: true, // Key feature being tested
 		},
 	)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -735,12 +734,11 @@ func TestOnProgress(t *testing.T) {
 		jobs,
 		workerFunc,
 		nil,
-		WorkerPoolConfig{
+		PoolConfig{
 			NumWorkers: 2,
 			OnProgress: onProgress,
 		},
 	)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

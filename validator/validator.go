@@ -3,6 +3,7 @@
 package validator
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -108,7 +109,8 @@ func (w *wrapper) GetErrors(err error) validator.ValidationErrors {
 	if err == nil {
 		return nil
 	}
-	if errs, ok := err.(validator.ValidationErrors); ok {
+	var errs validator.ValidationErrors
+	if errors.As(err, &errs) {
 		return errs
 	}
 	return nil
@@ -120,18 +122,17 @@ func (w *wrapper) GetErrorsFullStr(err error) string {
 		return ""
 	}
 
-	var errors validator.ValidationErrors
-	errors, ok := err.(validator.ValidationErrors)
-	if !ok {
+	var valErrs validator.ValidationErrors
+	if !errors.As(err, &valErrs) {
 		return err.Error()
 	}
 
-	if len(errors) == 0 {
+	if len(valErrs) == 0 {
 		return ""
 	}
 
-	var result = make([]string, len(errors))
-	for i, e := range errors {
+	result := make([]string, len(valErrs))
+	for i, e := range valErrs {
 		result[i] = fmt.Sprintf("%s: %s", e.Field(), e.Tag())
 	}
 	return strings.Join(result, ", ")
@@ -143,17 +144,16 @@ func (w *wrapper) GetErrorFirstStr(err error) string {
 		return ""
 	}
 
-	var errors validator.ValidationErrors
-	errors, ok := err.(validator.ValidationErrors)
-	if !ok {
+	var valErrs validator.ValidationErrors
+	if !errors.As(err, &valErrs) {
 		return err.Error()
 	}
 
-	if len(errors) == 0 {
+	if len(valErrs) == 0 {
 		return ""
 	}
 
-	errArr := errors[0]
+	errArr := valErrs[0]
 	return fmt.Sprintf("%s: %s", errArr.Field(), errArr.Tag())
 }
 
@@ -254,17 +254,16 @@ func (w *wrapper) GetErrorFirstMsg(err error) string {
 		return ""
 	}
 
-	var errors validator.ValidationErrors
-	errors, ok := err.(validator.ValidationErrors)
-	if !ok {
+	var valErrs validator.ValidationErrors
+	if !errors.As(err, &valErrs) {
 		return err.Error() // Fallback to raw error if not a ValidationErrors
 	}
 
-	if len(errors) == 0 {
+	if len(valErrs) == 0 {
 		return ""
 	}
 
-	errArr := errors[0]
+	errArr := valErrs[0]
 	return fmt.Sprintf("%s: %s", errArr.Field(), w.msgForTag(errArr))
 }
 
@@ -274,18 +273,17 @@ func (w *wrapper) GetErrorsFullMsg(err error) string {
 		return ""
 	}
 
-	var errors validator.ValidationErrors
-	errors, ok := err.(validator.ValidationErrors)
-	if !ok {
+	var valErrs validator.ValidationErrors
+	if !errors.As(err, &valErrs) {
 		return err.Error()
 	}
 
-	if len(errors) == 0 {
+	if len(valErrs) == 0 {
 		return ""
 	}
 
-	var result = make([]string, len(errors))
-	for i, e := range errors {
+	result := make([]string, len(valErrs))
+	for i, e := range valErrs {
 		result[i] = fmt.Sprintf("%s: %s", e.Field(), w.msgForTag(e))
 	}
 	return strings.Join(result, ", ")

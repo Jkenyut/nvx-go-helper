@@ -1,3 +1,4 @@
+// Package fileutil provides utility functions for file operations.
 package fileutil
 
 import (
@@ -7,10 +8,8 @@ import (
 	"regexp"
 )
 
-var (
-	// sanitizeRegex removes characters that are not alphanumeric, dot, dash, or underscore.
-	sanitizeRegex = regexp.MustCompile(`[^a-zA-Z0-9.\-_]`)
-)
+// sanitizeRegex removes characters that are not alphanumeric, dot, dash, or underscore.
+var sanitizeRegex = regexp.MustCompile(`[^a-zA-Z0-9.\-_]`)
 
 // SanitizeFileName removes invalid or dangerous characters from a filename.
 // It uses filepath.Base to prevent path traversal attacks (e.g., ../../../etc/passwd).
