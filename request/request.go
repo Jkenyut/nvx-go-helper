@@ -46,7 +46,7 @@ func BindAndValidate(r *http.Request, dest interface{}) error {
 
 // GetQueryString retrieves a query parameter as a string, returning defaultValue if it's empty.
 func GetQueryString(r *http.Request, key string, defaultValue string) string {
-	val := r.URL.Query().Get(key)
+	val := r.FormValue(key)
 	if val == "" {
 		return defaultValue
 	}
@@ -55,7 +55,7 @@ func GetQueryString(r *http.Request, key string, defaultValue string) string {
 
 // GetQueryInt retrieves a query parameter as an integer, returning defaultValue if it's missing or invalid.
 func GetQueryInt(r *http.Request, key string, defaultValue int) int {
-	val := r.URL.Query().Get(key)
+	val := r.FormValue(key)
 	if val == "" {
 		return defaultValue
 	}
@@ -68,7 +68,7 @@ func GetQueryInt(r *http.Request, key string, defaultValue int) int {
 
 // GetQueryBool retrieves a query parameter as a boolean, returning defaultValue if it's missing or invalid.
 func GetQueryBool(r *http.Request, key string, defaultValue bool) bool {
-	val := r.URL.Query().Get(key)
+	val := r.FormValue(key)
 	if val == "" {
 		return defaultValue
 	}
