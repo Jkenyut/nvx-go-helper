@@ -647,15 +647,16 @@ func TestRunGenericWorkerPoolSynchronous(t *testing.T) {
 	}
 
 	for _, res := range results {
-		if res.ID == "B" {
+		switch res.ID {
+		case "B":
 			if res.Err == nil {
 				t.Error("Expected error for job B")
 			}
-		} else if res.ID == "A" {
+		case "A":
 			if res.Value != 10 {
 				t.Errorf("Expected 10 for A, got %d", res.Value)
 			}
-		} else if res.ID == "C" {
+		case "C":
 			if res.Value != 30 {
 				t.Errorf("Expected 30 for C, got %d", res.Value)
 			}
