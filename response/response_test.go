@@ -1,11 +1,12 @@
 package response
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/Jkenyut/nvx-go-helper/activity"
+	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -126,7 +127,7 @@ func TestResponse_JSONSerialization(t *testing.T) {
 	ctx := activity.WithRequestID(context.Background(), "test-12345")
 	resp := Created(ctx, "user registered", map[string]string{"name": "Budi"})
 
-	data, _ := json.Marshal(resp)
+	data, _ := sonic.Marshal(resp)
 	jsonStr := string(data)
 
 	assert.Contains(t, jsonStr, `"success":true`)
@@ -138,10 +139,10 @@ func TestResponse_JSONSerialization(t *testing.T) {
 }
 
 func TestResponse_WithMessage(t *testing.T) {
-	ctx := context.WithValue(context.Background(), activity.RequestID, "test-12345")
+	ctx := activity.WithRequestID(context.Background(), "test-12345")
 	resp := WithMessage(ctx, "user registered", 200)
 
-	data, _ := json.Marshal(resp)
+	data, _ := sonic.Marshal(resp)
 	jsonStr := string(data)
 
 	assert.Contains(t, jsonStr, `"success":true`)
@@ -149,9 +150,64 @@ func TestResponse_WithMessage(t *testing.T) {
 
 	// Test failure case
 	respErr := WithMessage(ctx, "something wrong", 400)
-	dataErr, _ := json.Marshal(respErr)
+	dataErr, _ := sonic.Marshal(respErr)
 	jsonStrErr := string(dataErr)
 
 	assert.Contains(t, jsonStrErr, `"success":false`)
 	assert.Contains(t, jsonStrErr, `"status_code":400`)
+}
+
+func TestResponse_WithMessageData(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Success", func(t *testing.T) {
+		resp := WithMessageData(ctx, "custom msg", 205, "some data")
+		assert.True(t, resp.Meta.Success)
+		assert.Equal(t, 205, resp.Meta.StatusCode)
+		assert.Equal(t, "custom msg", resp.Meta.Message)
+		assert.Equal(t, "some data", resp.Data)
+	})
+
+	t.Run("Error", func(t *testing.T) {
+		resp := WithMessageData(ctx, "custom err", 400, map[string]string{"err": "details"})
+		assert.False(t, resp.Meta.Success)
+		assert.Equal(t, 400, resp.Meta.StatusCode)
+		assert.Equal(t, "custom err", resp.Meta.Message)
+	})
+}
+
+func TestResponse_JSONMarshal_Fallback(t *testing.T) {
+	ctx := context.Background()
+	// Create an unmarshalable type (func)
+	resp := OK(ctx, "test", func() {})
+
+	b := resp.JSONMarshal()
+	jsonStr := string(b)
+	assert.Contains(t, jsonStr, `"success":false`)
+	assert.Contains(t, jsonStr, `"status_code":500`)
+	assert.Contains(t, jsonStr, "internal server error: failed to marshal response data")
+}
+
+func TestResponse_JSONEncoder(t *testing.T) {
+	ctx := activity.WithRequestID(context.Background(), "test-enc-123")
+
+	t.Run("Valid", func(t *testing.T) {
+		resp := OK(ctx, "ok", "data")
+		var buf bytes.Buffer
+		resp.JSONEncoder(&buf)
+		jsonStr := buf.String()
+		assert.Contains(t, jsonStr, `"success":true`)
+		assert.Contains(t, jsonStr, `"request_id":"test-enc-123"`)
+		assert.Contains(t, jsonStr, `"data":"data"`)
+	})
+
+	t.Run("Fallback", func(t *testing.T) {
+		resp := OK(ctx, "ok", func() {})
+		var buf bytes.Buffer
+		resp.JSONEncoder(&buf)
+		jsonStr := buf.String()
+		assert.Contains(t, jsonStr, `"success":false`)
+		assert.Contains(t, jsonStr, `"status_code":500`)
+		assert.Contains(t, jsonStr, "internal server error: failed to encode response data")
+	})
 }

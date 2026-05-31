@@ -28,7 +28,6 @@ package pagination
 
 import (
 	"fmt"
-	"math"
 	"net/url"
 	"strconv"
 )
@@ -92,6 +91,12 @@ func New(pageStr, limitStr string, total int) Pagination {
 
 	// Calculate derived fields
 	p.TotalPages = p.calculateTotalPages()
+
+	// Cap page to TotalPages to prevent ghost pages
+	if p.TotalPages > 0 && p.Page > p.TotalPages {
+		p.Page = p.TotalPages
+	}
+
 	p.HasNext = p.Page < p.TotalPages
 	p.HasPrev = p.Page > 1
 	p.NextPage = p.Page + 1
@@ -120,8 +125,8 @@ func (p Pagination) calculateTotalPages() int {
 	if p.Limit == 0 {
 		return 0
 	}
-	// Use float division and ceil to get total pages
-	return int(math.Ceil(float64(p.Total) / float64(p.Limit)))
+	// Use integer arithmetic to calculate total pages (ceil)
+	return (p.Total + p.Limit - 1) / p.Limit
 }
 
 // Links generates RFC 5988 Link headers with FULL URL (scheme + host + path)
@@ -172,4 +177,32 @@ func parseInt(s string, fallback int) int {
 		return fallback
 	}
 	return val
+}
+
+// CursorPagination represents cursor-based pagination metadata.
+type CursorPagination struct {
+	Limit      int    `json:"limit"`                 // Items per page
+	NextCursor string `json:"next_cursor,omitempty"` // Opaque cursor for next page
+	PrevCursor string `json:"prev_cursor,omitempty"` // Opaque cursor for previous page
+	HasNext    bool   `json:"has_next"`              // Whether there is a next page
+}
+
+// NewCursor creates a new CursorPagination.
+// Limit is sanitized similarly to offset pagination.
+func NewCursor(limitStr string, nextCursor string, prevCursor string, hasNext bool) CursorPagination {
+	limit := parseInt(limitStr, DefaultLimit)
+
+	if limit < MinLimit {
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit {
+		limit = MaxLimit
+	}
+
+	return CursorPagination{
+		Limit:      limit,
+		NextCursor: nextCursor,
+		PrevCursor: prevCursor,
+		HasNext:    hasNext,
+	}
 }

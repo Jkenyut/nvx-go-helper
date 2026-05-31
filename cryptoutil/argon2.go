@@ -99,14 +99,24 @@ func DeriveKeyHigh(password, salt string) string {
 
 // CompareKey verifies if a password+salt produces the expected key.
 func CompareKey(password, salt, expectedKey string, time, memory uint32, threads uint8, keyLen uint32) bool {
-	derivedKey := DeriveKey(password, salt, time, memory, threads, keyLen)
-
-	derivedBytes, err1 := base64.StdEncoding.DecodeString(derivedKey)
-	expectedBytes, err2 := base64.StdEncoding.DecodeString(expectedKey)
-
-	if err1 != nil || err2 != nil {
+	if keyLen == 0 {
 		return false
 	}
+
+	expectedBytes, err := base64.StdEncoding.DecodeString(expectedKey)
+	if err != nil {
+		return false
+	}
+
+	// Decode salt from base64
+	saltBytes, err := base64.StdEncoding.DecodeString(salt)
+	if err != nil {
+		// If salt is not base64, use it as-is
+		saltBytes = []byte(salt)
+	}
+
+	// Derive key directly to raw bytes
+	derivedBytes := argon2.IDKey([]byte(password), saltBytes, time, memory, threads, keyLen)
 
 	return subtle.ConstantTimeCompare(derivedBytes, expectedBytes) == 1
 }

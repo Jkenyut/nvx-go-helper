@@ -7,9 +7,10 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
+
+	"github.com/bytedance/sonic"
 )
 
 // AESGCM is the only struct you will ever use.
@@ -49,9 +50,9 @@ func NewAESGCM(keys string) (*AESGCM, error) {
 // Encrypt any data → URL-safe base64 string (super fast)
 func (c *AESGCM) Encrypt(data any) (string, error) {
 	// Marshal the input data (struct/map/slice) to JSON bytes
-	plaintext, err := json.Marshal(data)
+	plaintext, err := sonic.Marshal(data)
 	if err != nil {
-		return "", fmt.Errorf("json marshal: %w", err)
+		return "", fmt.Errorf("sonic.Marshal: %w", err)
 	}
 
 	// Create a random nonce (Number Used Once)
@@ -99,5 +100,5 @@ func (c *AESGCM) Decrypt(encrypted string, target any) error {
 	}
 
 	// Unmarshal the decrypted JSON bytes back into the target struct
-	return json.Unmarshal(plaintext, target)
+	return sonic.Unmarshal(plaintext, target)
 }

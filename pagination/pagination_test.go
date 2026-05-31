@@ -127,6 +127,22 @@ func TestNew(t *testing.T) {
 				PrevPage:   0,
 			},
 		},
+		{
+			name:     "ghost page out of bounds -> cap to max page",
+			pageStr:  "100",
+			limitStr: "10",
+			total:    50,
+			want: Pagination{
+				Page:       5,
+				Limit:      10,
+				Total:      50,
+				TotalPages: 5,
+				HasNext:    false,
+				HasPrev:    true,
+				NextPage:   0,
+				PrevPage:   4,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -136,6 +152,7 @@ func TestNew(t *testing.T) {
 		})
 	}
 }
+
 func TestOffset(t *testing.T) {
 	tests := []struct {
 		page, limit, expected int
@@ -217,8 +234,67 @@ func TestLinks(t *testing.T) {
 		})
 	}
 }
+
 func BenchmarkNew(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = New("2", "25", 1000)
+	}
+}
+
+func TestNewCursor(t *testing.T) {
+	tests := []struct {
+		name       string
+		limitStr   string
+		nextCursor string
+		prevCursor string
+		hasNext    bool
+		want       CursorPagination
+	}{
+		{
+			name:       "valid cursor inputs",
+			limitStr:   "25",
+			nextCursor: "cursor_xyz",
+			prevCursor: "cursor_abc",
+			hasNext:    true,
+			want: CursorPagination{
+				Limit:      25,
+				NextCursor: "cursor_xyz",
+				PrevCursor: "cursor_abc",
+				HasNext:    true,
+			},
+		},
+		{
+			name:       "invalid limit fallback",
+			limitStr:   "invalid",
+			nextCursor: "next",
+			prevCursor: "",
+			hasNext:    true,
+			want: CursorPagination{
+				Limit:      10,
+				NextCursor: "next",
+				PrevCursor: "",
+				HasNext:    true,
+			},
+		},
+		{
+			name:       "limit capped to max",
+			limitStr:   "999999",
+			nextCursor: "",
+			prevCursor: "",
+			hasNext:    false,
+			want: CursorPagination{
+				Limit:      100000,
+				NextCursor: "",
+				PrevCursor: "",
+				HasNext:    false,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NewCursor(tt.limitStr, tt.nextCursor, tt.prevCursor, tt.hasNext)
+			assert.Equal(t, tt.want, got)
+		})
 	}
 }

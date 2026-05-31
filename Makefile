@@ -12,8 +12,11 @@ test: ## Run all unit tests
 test-cover: ## Run tests with coverage
 	go test -v -cover ./...
 
-lint: ## Run go vet
-	go vet ./...
+lint: ## Run golangci-lint
+	golangci-lint run ./...
+
+lint-fix: ## Auto-fix golangci-lint issues
+	golangci-lint run --fix ./... 
 
 clean: ## Clean build artifacts
 	go clean

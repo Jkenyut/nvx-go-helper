@@ -33,7 +33,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"math/big"
 )
 
 // Character sets
@@ -86,31 +85,41 @@ func Numbers(length int) string {
 
 // stringWithCharset is the core implementation shared by all string functions.
 // It is intentionally unexported — users should use the semantic helpers above.
+//
+// Uses rejection sampling to eliminate modulo bias: random bytes that would
+// cause uneven distribution are discarded and re-sampled. This ensures every
+// character in the charset has exactly equal probability.
 func stringWithCharset(length int, charset string) string {
-	// Guard clause for invalid length
 	if length <= 0 {
 		return ""
 	}
-	// Allocate byte slice of exact length (minimizes allocation overhead)
-	b := make([]byte, length)
 
-	// Create big.Int for the upper bound (len(charset))
-	// crypto/rand works with big.Int
-	maxID := big.NewInt(int64(len(charset)))
+	charsetLen := byte(len(charset))
+	// Calculate the largest multiple of charsetLen that fits in a byte.
+	// Any random byte >= maxValid would introduce bias and must be rejected.
+	maxValid := 256 - (256 % int(charsetLen)) // e.g., for 36 chars: 252
 
-	for i := range b {
-		// Use crypto/rand.Int for secure random number generation
-		// This reads from /dev/urandom on Unix-like systems
-		n, err := rand.Int(rand.Reader, maxID)
-		if err != nil {
-			// Panic only if the OS random source fails (extremely rare, usually fatal OS error)
-			panic("crypto/rand.Int failed: " + err.Error())
+	result := make([]byte, length)
+	buf := make([]byte, length+(length/4)+16) // over-allocate to reduce syscalls
+
+	filled := 0
+	for filled < length {
+		if _, err := rand.Read(buf); err != nil {
+			panic("crypto/rand.Read failed: " + err.Error())
 		}
-		// Map the random number to a character in the charset
-		b[i] = charset[n.Int64()]
+		for _, b := range buf {
+			if filled >= length {
+				break
+			}
+			if int(b) < maxValid {
+				result[filled] = charset[b%charsetLen]
+				filled++
+			}
+			// else: reject this byte (would cause bias)
+		}
 	}
-	// Convert byte slice to string and return
-	return string(b)
+
+	return string(result)
 }
 
 // GenerateKey generates a cryptographically secure random key.
@@ -128,7 +137,7 @@ func stringWithCharset(length int, charset string) string {
 //	}
 //	fmt.Println(key)  // "Q3J5cHRvR3JhcGhpY2FsbHlTZWN1cmVLZXk="
 func GenerateKey(length uint32) (string, error) {
-	if length <= 0 {
+	if length == 0 {
 		return "", fmt.Errorf("key length must be positive, got %d", length)
 	}
 
@@ -155,7 +164,7 @@ func GenerateKey(length uint32) (string, error) {
 //	}
 //	fmt.Println(key)  // "a1b2c3d4e5f6..."
 func GenerateKeyHex(length uint32) (string, error) {
-	if length <= 0 {
+	if length == 0 {
 		return "", fmt.Errorf("key length must be positive, got %d", length)
 	}
 
@@ -182,7 +191,7 @@ func GenerateKeyHex(length uint32) (string, error) {
 //	}
 //	fmt.Printf("Generated %d bytes\n", len(key))
 func GenerateKeyRaw(length uint32) ([]byte, error) {
-	if length <= 0 {
+	if length == 0 {
 		return nil, fmt.Errorf("key length must be positive, got %d", length)
 	}
 

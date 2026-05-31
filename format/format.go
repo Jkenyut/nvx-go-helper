@@ -11,12 +11,13 @@
 package format
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 // =============================================================================
@@ -36,6 +37,7 @@ func Title(s string) string {
 		return ""
 	}
 	var result strings.Builder
+	result.Grow(len(s))
 	// Flag to track if the next character should be uppercased
 	upperNext := true
 	for _, r := range s {
@@ -73,33 +75,6 @@ func toLower(r rune) rune {
 		return r + 32 // ASCII logic
 	}
 	return r
-}
-
-// AddStringUnique appends a value to a string slice only if it does not already exist
-// (case-insensitive comparison). The value is normalized with Title() before insertion.
-// Empty (after trim) values are ignored. The slice is modified in place.
-//
-// Example:
-//
-//	items := []string{"Admin", "User"}
-//	AddStringUnique("admin", &items)      // no change
-//	AddStringUnique("moderator", &items) // items becomes ["Admin", "User", "Moderator"]
-func AddStringUnique(value string, slice *[]string) {
-	// Guard clause for empty input
-	if strings.TrimSpace(value) == "" {
-		return
-	}
-	// Normalize value
-	value = Title(value)
-
-	// Check for duplicates
-	for _, v := range *slice {
-		if strings.EqualFold(v, value) {
-			return // Already exists
-		}
-	}
-	// Append if unique
-	*slice = append(*slice, value)
 }
 
 // =============================================================================
@@ -217,10 +192,26 @@ func ToString(v any) string {
 		return value
 	case []byte:
 		return string(value)
-	case int, int8, int16, int32, int64:
-		return fmt.Sprintf("%d", value)
-	case uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprintf("%d", value)
+	case int:
+		return strconv.FormatInt(int64(value), 10)
+	case int8:
+		return strconv.FormatInt(int64(value), 10)
+	case int16:
+		return strconv.FormatInt(int64(value), 10)
+	case int32:
+		return strconv.FormatInt(int64(value), 10)
+	case int64:
+		return strconv.FormatInt(value, 10)
+	case uint:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(value), 10)
+	case uint64:
+		return strconv.FormatUint(value, 10)
 	case float32:
 		return strconv.FormatFloat(float64(value), 'f', -1, 32)
 	case float64:
@@ -235,13 +226,20 @@ func ToString(v any) string {
 	case fmt.Stringer:
 		return value.String()
 	default:
-		// Handle nil pointer/interface
-		if reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil() {
+		// Handle nil pointer/interface safely.
+		// reflect.ValueOf(v).IsNil() panics on non-nillable kinds, so we must check first.
+		rv := reflect.ValueOf(v)
+		switch rv.Kind() {
+		case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func:
+			if rv.IsNil() {
+				return ""
+			}
+		case reflect.Invalid:
 			return ""
 		}
 
 		// JSON fallback for complex types
-		if b, err := json.Marshal(v); err == nil {
+		if b, err := sonic.Marshal(v); err == nil {
 			return string(b)
 		}
 		// Ultimate fallback
@@ -300,14 +298,117 @@ func ToSafeString(v any) string {
 	s := ToString(v)
 	// Trim whitespace
 	s = strings.TrimSpace(s)
-	// Replace unsafe characters
-	s = strings.ReplaceAll(s, " ", "_")
-	s = strings.ReplaceAll(s, "/", "_")
-	s = strings.ReplaceAll(s, "\\", "_")
-	s = strings.ReplaceAll(s, ":", "_")
 	// Handle empty result
 	if s == "" {
 		return "empty"
 	}
-	return s
+	// Replace unsafe characters
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || r == '/' || r == '\\' || r == ':' {
+			return '_'
+		}
+		return r
+	}, s)
+}
+
+// =============================================================================
+// STRING MASKING & FORMATTING
+// =============================================================================
+
+// MaskEmail masks an email address for display, preserving only the first
+// character of the local part and the full domain.
+// Returns empty string if input is empty or invalid.
+//
+// Example:
+//
+//	MaskEmail("john@example.com")      // "j***@example.com"
+//	MaskEmail("ab@example.com")        // "a***@example.com"
+func MaskEmail(email string) string {
+	if email == "" {
+		return ""
+	}
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	local := parts[0]
+	// Show first character, mask the rest
+	masked := string(local[0]) + "***"
+	return masked + "@" + parts[1]
+}
+
+// MaskPhone masks a phone number for display, showing the prefix and last 4 digits.
+// Designed for Indonesian phone numbers but works with any format.
+// Returns empty string if input is empty or too short.
+//
+// Example:
+//
+//	MaskPhone("+6281234567890")  // "+62812****7890"
+//	MaskPhone("081234567890")   // "08123****7890"
+func MaskPhone(phone string) string {
+	if len(phone) < 8 {
+		return ""
+	}
+	// Show first (len-4)/2+1 chars, mask middle, show last 4
+	visiblePrefix := len(phone) - 4
+	if visiblePrefix > 5 {
+		visiblePrefix = 5
+	}
+	masked := phone[:visiblePrefix] + strings.Repeat("*", len(phone)-visiblePrefix-4) + phone[len(phone)-4:]
+	return masked
+}
+
+// Truncate truncates a string to maxLen characters and appends "..." if truncated.
+// If the string is shorter than or equal to maxLen, it is returned unchanged.
+// maxLen must be >= 3 (to fit the ellipsis); otherwise returns original string.
+//
+// Example:
+//
+//	Truncate("Hello, World!", 10) // "Hello, ..."
+//	Truncate("Hi", 10)           // "Hi"
+func Truncate(s string, maxLen int) string {
+	if maxLen < 3 || len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// PadLeft pads a string on the left side to reach the desired length.
+// If the string is already longer than or equal to length, it is returned unchanged.
+//
+// Example:
+//
+//	PadLeft("42", 5, '0')   // "00042"
+//	PadLeft("hello", 3, ' ') // "hello"
+func PadLeft(s string, length int, pad rune) string {
+	if len(s) >= length {
+		return s
+	}
+	return strings.Repeat(string(pad), length-len(s)) + s
+}
+
+// PadRight pads a string on the right side to reach the desired length.
+// If the string is already longer than or equal to length, it is returned unchanged.
+//
+// Example:
+//
+//	PadRight("42", 5, '0')   // "42000"
+//	PadRight("hello", 3, ' ') // "hello"
+func PadRight(s string, length int, pad rune) string {
+	if len(s) >= length {
+		return s
+	}
+	return s + strings.Repeat(string(pad), length-len(s))
+}
+
+// Dollar formats a float64 amount as a USD currency string (e.g. 1,234,567.89).
+// Uses comma (,) as thousand separator and dot (.) as decimal separator.
+// Always shows exactly 2 decimal places.
+//
+// Example:
+//
+//	Dollar(1234567.89) // "1,234,567.89"
+//	Dollar(-5000)      // "-5,000.00"
+func Dollar(amount float64) string {
+	return formatNumber(amount, 2, ".", ",")
 }

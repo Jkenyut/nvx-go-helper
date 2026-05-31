@@ -79,18 +79,18 @@ func ToUTC(t time.Time) time.Time { return t.UTC() }
 // FORMATTERS
 // =============================================================================
 
-// FormatWIB formats a time in WIB using the specified layout.
+// WIBString formats a time in WIB using the specified layout.
 // Returns an empty string if the time is zero.
-func FormatWIB(t time.Time, layout string) string {
+func WIBString(t time.Time, layout string) string {
 	if t.IsZero() {
 		return ""
 	}
 	return t.In(WIB).Format(layout)
 }
 
-// FormatUTC formats a time in UTC using the specified layout.
+// UTCString formats a time in UTC using the specified layout.
 // Returns an empty string if the time is zero.
-func FormatUTC(t time.Time, layout string) string {
+func UTCString(t time.Time, layout string) string {
 	if t.IsZero() {
 		return ""
 	}
@@ -183,7 +183,7 @@ func StringToDateUTCOrZero(s string) time.Time {
 	return t
 }
 
-// string to unix timestamp
+// StringToUnix converts a string to unix timestamp.
 func StringToUnix(tsString string) (time.Time, error) {
 	sec, err := strconv.ParseInt(tsString, 10, 64)
 	if err != nil {

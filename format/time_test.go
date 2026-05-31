@@ -79,13 +79,13 @@ func TestFormatWIB(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		assert.Equal(t, tt.expected, FormatWIB(utcTime, tt.layout))
+		assert.Equal(t, tt.expected, WIBString(utcTime, tt.layout))
 	}
 }
 
 func TestFormatUTC(t *testing.T) {
 	wibTime := time.Date(2025, 1, 1, 12, 0, 0, 0, WIB)
-	assert.Equal(t, "2025-01-01T05:00:00Z", FormatUTC(wibTime, time.RFC3339))
+	assert.Equal(t, "2025-01-01T05:00:00Z", UTCString(wibTime, time.RFC3339))
 }
 
 func TestParseRFC3339Safe(t *testing.T) {
