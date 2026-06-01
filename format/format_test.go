@@ -229,6 +229,162 @@ func TestMaskPhone(t *testing.T) {
 	}
 }
 
+func TestMaskAfterKeywords(t *testing.T) {
+	kw := []string{"password", "token"}
+
+	tests := []struct {
+		name     string
+		input    string
+		keywords []string
+		maskChar string
+		expected string
+	}{
+		// --- Double-quoted (JSON) ---
+		{
+			name:     "json double-quoted value",
+			input:    `{"password": "secret"}`,
+			keywords: kw,
+			maskChar: "*",
+			expected: `{"password": "******"}`,
+		},
+		{
+			name:     "json double-quoted with escaped quote inside value",
+			input:    `{"password": "sec\"ret"}`,
+			keywords: kw,
+			maskChar: "*",
+			// sec\"ret = 8 raw chars (backslash counts); mask length matches raw capture
+			expected: `{"password": "********"}`,
+		},
+		{
+			name:     "json double-quoted empty value",
+			input:    `{"password": ""}`,
+			keywords: kw,
+			maskChar: "*",
+			expected: `{"password": ""}`,
+		},
+
+		// --- Single-quoted ---
+		{
+			name:     "single-quoted value",
+			input:    `password='mysecret'`,
+			keywords: kw,
+			maskChar: "*",
+			expected: `password='********'`,
+		},
+		{
+			name:     "single-quoted with escaped quote inside value",
+			input:    `password='it\'s secret'`,
+			keywords: kw,
+			maskChar: "*",
+			// it\'s secret = 12 raw chars (backslash counts); mask length matches raw capture
+			expected: `password='************'`,
+		},
+
+		// --- Backtick-quoted ---
+		{
+			name:     "backtick-quoted value",
+			input:    "token=`mytoken`",
+			keywords: kw,
+			maskChar: "*",
+			expected: "token=`*******`",
+		},
+
+		// --- Unquoted (plain text) ---
+		{
+			name:     "unquoted plain text with equals",
+			input:    "token=abc123",
+			keywords: kw,
+			maskChar: "*",
+			expected: "token=******",
+		},
+		{
+			name:     "unquoted plain text with space separator",
+			input:    "token abc123",
+			keywords: kw,
+			maskChar: "*",
+			expected: "token ******",
+		},
+		{
+			name:     "json boolean value",
+			input:    `{"active": true, "password": false}`,
+			keywords: kw,
+			maskChar: "*",
+			expected: `{"active": true, "password": *****}`,
+		},
+		{
+			name:     "unquoted value absorbs trailing quote char",
+			input:    `token=abc"`,
+			keywords: kw,
+			maskChar: "*",
+			// abc" is 4 chars — regex [^\s,;{}&]+ includes ", so it's part of the value
+			expected: `token=****`,
+		},
+
+		// --- Multiple keywords ---
+		{
+			name:     "multiple keywords in one string",
+			input:    `password=secret&token=abc`,
+			keywords: kw,
+			maskChar: "*",
+			expected: `password=******&token=***`,
+		},
+		{
+			name:     "mixed formats in one string",
+			input:    `{"password": "secret", "token": "xyz"}`,
+			keywords: kw,
+			maskChar: "*",
+			expected: `{"password": "******", "token": "***"}`,
+		},
+
+		// --- Case-insensitive ---
+		{
+			name:     "case-insensitive keyword match",
+			input:    `PASSWORD=secret`,
+			keywords: kw,
+			maskChar: "*",
+			expected: `PASSWORD=******`,
+		},
+
+		// --- Custom mask char ---
+		{
+			name:     "custom mask char dash",
+			input:    `token=abc123`,
+			keywords: kw,
+			maskChar: "-",
+			expected: `token=------`,
+		},
+
+		// --- Edge cases ---
+		{
+			name:     "empty keywords returns original",
+			input:    `password=secret`,
+			keywords: []string{},
+			maskChar: "*",
+			expected: `password=secret`,
+		},
+		{
+			name:     "no keyword match returns original",
+			input:    `username=johndoe`,
+			keywords: kw,
+			maskChar: "*",
+			expected: `username=johndoe`,
+		},
+		{
+			name:     "empty input",
+			input:    "",
+			keywords: kw,
+			maskChar: "*",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, MaskAfterKeywords(tt.input, tt.keywords, tt.maskChar))
+		})
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	tests := []struct {
 		input    string

@@ -13,8 +13,10 @@ package format
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -411,4 +413,68 @@ func PadRight(s string, length int, pad rune) string {
 //	Dollar(-5000)      // "-5,000.00"
 func Dollar(amount float64) string {
 	return formatNumber(amount, 2, ".", ",")
+}
+
+var maskRegexCache sync.Map
+
+// MaskAfterKeywords masks values that appear immediately after specific keywords.
+// It is safe for Plain Text, JSON, and template formats (preserves surrounding quotes).
+// Supports double-quoted, single-quoted, backtick-quoted, and unquoted values.
+// Handles escaped quotes inside quoted strings (e.g. `\"`).
+// Uses sync.Map to cache compiled regex for high-performance logging.
+//
+// Example:
+//
+//	MaskAfterKeywords(`{"password": "secret"}`, []string{"password"}, "*") // `{"password": "******"}`
+//	MaskAfterKeywords("token=abc123", []string{"token"}, "*")               // "token=******"
+//	MaskAfterKeywords("key=`mysecret`", []string{"key"}, "*")               // "key=`********`"
+func MaskAfterKeywords(text string, keywords []string, maskChar string) string {
+	if len(keywords) == 0 {
+		return text
+	}
+
+	// Use joined keywords as cache key to prevent recompiling regex on every call
+	cacheKey := strings.Join(keywords, "|")
+	
+	var re *regexp.Regexp
+	if cached, ok := maskRegexCache.Load(cacheKey); ok {
+		re = cached.(*regexp.Regexp)
+	} else {
+		var escaped []string
+		for _, k := range keywords {
+			escaped = append(escaped, regexp.QuoteMeta(k))
+		}
+		// Regex Pattern:
+		// Group 1: Keyword (including optional surrounding quotes)
+		// Group 2: Separator (spaces, =, or :)
+		// Group 3: Value in double quotes — supports escaped \" inside
+		// Group 4: Value in single quotes — supports escaped \' inside
+		// Group 5: Value in backticks
+		// Group 6: Unquoted value (plain text, JSON numbers/booleans)
+		// Unquoted exclusion includes & to correctly split key=val&key=val pairs.
+		pattern := fmt.Sprintf(`(?i)(["'` + "`" + `]?\b(?:%s)\b["'` + "`" + `]?)([\s=:]+)(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|` + "`" + `([^` + "`" + `]*)` + "`" + `|([^\s,;{}&]+))`, strings.Join(escaped, "|"))
+		re = regexp.MustCompile(pattern)
+		maskRegexCache.Store(cacheKey, re)
+	}
+
+	return re.ReplaceAllStringFunc(text, func(match string) string {
+		parts := re.FindStringSubmatch(match)
+		idx := re.FindStringSubmatchIndex(match)
+
+		kw := parts[1]  // Keyword
+		sep := parts[2] // Separator
+
+		// Use submatch indices (not empty-string check) to detect which group matched.
+		// parts[n] != "" fails for empty quoted values like ""; idx[n*2] >= 0 is correct.
+		switch {
+		case idx[6] >= 0: // Double-quoted (JSON / standard string) — group 3
+			return kw + sep + `"` + strings.Repeat(maskChar, len(parts[3])) + `"`
+		case idx[8] >= 0: // Single-quoted — group 4
+			return kw + sep + `'` + strings.Repeat(maskChar, len(parts[4])) + `'`
+		case idx[10] >= 0: // Backtick-quoted — group 5
+			return kw + sep + "`" + strings.Repeat(maskChar, len(parts[5])) + "`"
+		default: // Unquoted (plain text, JSON number/boolean, etc) — group 6
+			return kw + sep + strings.Repeat(maskChar, len(parts[6]))
+		}
+	})
 }
