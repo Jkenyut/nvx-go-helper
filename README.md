@@ -34,14 +34,43 @@ fields := activity.GetAllFieldsFromContext(ctx)
 ```
 
 ### 2. Cryptoutil (`/cryptoutil`)
-Unified package for all things crypto: AES-GCM, HMAC, SHA, UUIDs, and Random strings.
+Unified, production-ready package for all things crypto: Password Hashing (Argon2), AES-GCM, ECC (ECIES), UUIDs, and Random string generators.
 
-**AES-256-GCM**
-Ultra-fast and secure encryption.
+**Password Hashing (Argon2id)**
+Industry-standard password hashing using the PHC string format (single column storage). Includes built-in mitigation against timing attacks.
 ```go
 import "github.com/Jkenyut/nvx-go-helper/cryptoutil"
 
-enc, _ := cryptoutil.NewAESGCM("32-byte-secret-key-must-be-exact!")
+// 1. Hash password (returns $argon2id$v=19$m=32768,t=1,p=2$salt$hash)
+encodedHash, _ := cryptoutil.HashPassword("Katakunciku123") 
+
+// 2. Verify password (automatically extracts parameters & salt)
+isValid, _ := cryptoutil.VerifyPassword("Katakunciku123", encodedHash)
+```
+
+**Asymmetric / Hybrid Encryption (ECC + AES-GCM)**
+Perfect for Frontend-to-Backend secure communication. Frontend encrypts with Public Key, Backend decrypts with Private Key using ECIES.
+```go
+// Generate or load keys (Supports PEM format)
+privKey, pubKey, _ := cryptoutil.GenerateECCKeyPair()
+
+// Encrypt (usually on client/frontend)
+ciphertext, _ := cryptoutil.EncryptECC(pubKey, []byte("super-secret-data"))
+
+// Decrypt (on backend)
+plaintext, _ := cryptoutil.DecryptECC(privKey, ciphertext)
+```
+
+**Symmetric Encryption (AES-256-GCM)**
+Ultra-fast, secure encryption utilizing `bytedance/sonic` for JSON map serialization.
+```go
+// 1. Generate a secure hex key for your .env file
+hexKey, _ := cryptoutil.GenerateAESKey() // "a1b2c3..."
+
+// 2. Initialize Encryptor
+enc, _ := cryptoutil.NewAESGCMFromHex(hexKey)
+
+// 3. Encrypt any struct/map securely
 token, _ := enc.Encrypt(map[string]string{"user_id": "123"})
 ```
 
@@ -52,13 +81,10 @@ id := cryptoutil.V7()    // Time-ordered (Recommended for DB Primary Keys)
 ```
 
 **Random Strings & Keys (Turbo Optimized)**
-Uses bulk-read OS syscalls (`/dev/urandom`) for extreme speed without compromising cryptographic security.
+Uses bulk-read OS syscalls (`/dev/urandom`) with rejection sampling for extreme speed without compromising entropy.
 ```go
 otp := cryptoutil.Numbers(6) // "123456"
 ref := cryptoutil.String(8)  // "A1B2C3D4"
-
-// Generate secure API Keys
-key, _ := cryptoutil.GenerateKeyHex(32) // "a1b2c3d4e5f6..."
 ```
 
 ### 3. Env (`/env`)
