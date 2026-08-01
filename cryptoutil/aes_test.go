@@ -47,3 +47,37 @@ func TestAESGCM(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestGenerateAESKeyAndNewFromHex(t *testing.T) {
+	// 1. Generate key
+	hexKey, err := GenerateAESKey()
+	assert.NoError(t, err)
+	
+	// Hex string of 32 bytes should be 64 characters long
+	assert.Len(t, hexKey, 64)
+
+	// 2. Initialize from hex
+	aesGCM, err := NewAESGCMFromHex(hexKey)
+	assert.NoError(t, err)
+	assert.NotNil(t, aesGCM)
+
+	// 3. Test Encrypt/Decrypt
+	original := "secret message with generated key"
+	encrypted, err := aesGCM.Encrypt(original)
+	assert.NoError(t, err)
+
+	var decrypted string
+	err = aesGCM.Decrypt(encrypted, &decrypted)
+	assert.NoError(t, err)
+	assert.Equal(t, original, decrypted)
+}
+
+func TestNewAESGCMFromHex_Invalid(t *testing.T) {
+	// Invalid hex string
+	_, err := NewAESGCMFromHex("not a hex string!")
+	assert.Error(t, err)
+
+	// Valid hex but wrong length (16 bytes = 32 hex chars)
+	_, err = NewAESGCMFromHex("0123456789abcdef0123456789abcdef")
+	assert.Error(t, err)
+}
