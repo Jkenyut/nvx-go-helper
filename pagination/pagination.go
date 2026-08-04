@@ -129,38 +129,29 @@ func (p Pagination) calculateTotalPages() int {
 	return (p.Total + p.Limit - 1) / p.Limit
 }
 
-// Links generates RFC 5988 Link headers with FULL URL (scheme + host + path)
+// Links generates RFC 5988 Link headers.
 // Useful for HATEOAS compliance.
 func (p Pagination) Links(baseURL string) (map[string]string, error) {
-	// Parse the base URL
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, err
 	}
 
-	// Use RawPath if available to preserve encoding, otherwise Path
-	path := u.Path
-	if u.RawPath != "" {
-		path = u.RawPath
-	}
-
-	// Build complete base URL: scheme://host/path
-	base := fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, path)
-
-	links := make(map[string]string)
 	q := u.Query()
-	// Set limit parameter
 	q.Set("limit", strconv.Itoa(p.Limit))
 
-	// Generate 'prev' link if applicable
+	links := make(map[string]string)
+
 	if p.HasPrev {
 		q.Set("page", strconv.Itoa(p.PrevPage))
-		links["prev"] = fmt.Sprintf(`<%s?%s>; rel="prev"`, base, q.Encode())
+		u.RawQuery = q.Encode()
+		links["prev"] = fmt.Sprintf(`<%s>; rel="prev"`, u.String())
 	}
-	// Generate 'next' link if applicable
+
 	if p.HasNext {
 		q.Set("page", strconv.Itoa(p.NextPage))
-		links["next"] = fmt.Sprintf(`<%s?%s>; rel="next"`, base, q.Encode())
+		u.RawQuery = q.Encode()
+		links["next"] = fmt.Sprintf(`<%s>; rel="next"`, u.String())
 	}
 
 	return links, nil

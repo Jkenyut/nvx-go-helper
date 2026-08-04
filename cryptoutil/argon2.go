@@ -132,4 +132,3 @@ func hashPasswordParams(password string, time, memory uint32, threads uint8, key
 	encoded := fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, memory, time, threads, b64Salt, b64Hash)
 	return encoded, nil
 }
-

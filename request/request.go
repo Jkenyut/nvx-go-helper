@@ -122,3 +122,8 @@ func GetBearerToken(r *http.Request) string {
 	}
 	return ""
 }
+
+// GetBasicAuthUsernamePassword extracts username and password from Basic Authentication header
+func GetBasicAuthUsernamePassword(r *http.Request) (string, string, bool) {
+	return r.BasicAuth()
+}

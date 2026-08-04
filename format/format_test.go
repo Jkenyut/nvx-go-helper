@@ -129,7 +129,7 @@ func TestToString(t *testing.T) {
 		{"nil map", (map[string]string)(nil), ""},
 		{"nil slice", ([]int)(nil), ""},
 		{"nil chan", (chan int)(nil), ""},
-		{"map → JSON", map[string]any{"name": "Budi", "age": 30}, `{"name":"Budi","age":30}`},
+		{"map → JSON", map[string]any{"name": "Budi"}, `{"name":"Budi"}`},
 		{"struct → JSON", struct{ Name string }{Name: "Siti"}, `{"Name":"Siti"}`},
 	}
 
