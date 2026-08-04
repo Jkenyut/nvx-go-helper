@@ -435,7 +435,7 @@ func MaskAfterKeywords(text string, keywords []string, maskChar string) string {
 
 	// Use joined keywords as cache key to prevent recompiling regex on every call
 	cacheKey := strings.Join(keywords, "|")
-	
+
 	var re *regexp.Regexp
 	if cached, ok := maskRegexCache.Load(cacheKey); ok {
 		re = cached.(*regexp.Regexp)
@@ -452,7 +452,7 @@ func MaskAfterKeywords(text string, keywords []string, maskChar string) string {
 		// Group 5: Value in backticks
 		// Group 6: Unquoted value (plain text, JSON numbers/booleans)
 		// Unquoted exclusion includes & to correctly split key=val&key=val pairs.
-		pattern := fmt.Sprintf(`(?i)(["'` + "`" + `]?\b(?:%s)\b["'` + "`" + `]?)([\s=:]+)(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|` + "`" + `([^` + "`" + `]*)` + "`" + `|([^\s,;{}&]+))`, strings.Join(escaped, "|"))
+		pattern := fmt.Sprintf(`(?i)(["'`+"`"+`]?\b(?:%s)\b["'`+"`"+`]?)([\s=:]+)(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`+"`"+`([^`+"`"+`]*)`+"`"+`|([^\s,;{}&]+))`, strings.Join(escaped, "|"))
 		re = regexp.MustCompile(pattern)
 		maskRegexCache.Store(cacheKey, re)
 	}
