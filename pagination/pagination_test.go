@@ -54,7 +54,7 @@ func TestNew(t *testing.T) {
 			total:    10,
 			want: Pagination{
 				Page:       1,
-				Limit:      99999, // ← SEKARANG BOLEH!
+				Limit:      99999, // ← NOW ALLOWED!
 				Total:      10,
 				TotalPages: 1,
 				HasNext:    false,
@@ -86,7 +86,7 @@ func TestNew(t *testing.T) {
 			total:    100,
 			want: Pagination{
 				Page:       1,
-				Limit:      100000, // ← DI-CLAMP KE MAX
+				Limit:      100000, // ← CLAMPED TO MAX
 				Total:      100,
 				TotalPages: 1,
 				HasNext:    false,
@@ -174,7 +174,7 @@ func TestLinks(t *testing.T) {
 		name     string
 		p        Pagination
 		baseURL  string
-		expected map[string]string // hanya cek isi, bukan urutan
+		expected map[string]string // only check content, not order
 		wantErr  bool
 	}{
 		{
@@ -230,13 +230,13 @@ func TestLinks(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.expected, links) // ini akan PASS karena urutan sudah sesuai Go
+			assert.Equal(t, tt.expected, links)
 		})
 	}
 }
 
 func BenchmarkNew(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = New("2", "25", 1000)
 	}
 }
