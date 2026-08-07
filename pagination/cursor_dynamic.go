@@ -3,8 +3,11 @@ package pagination
 import (
 	"encoding/base64"
 	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/Jkenyut/nvx-go-helper/request"
 	"github.com/bytedance/sonic"
 )
 
@@ -84,4 +87,190 @@ func BuildDynamicKeyset(columns []string, operators []string, values []interface
 
 	sqlStr := strings.Join(orClauses, " OR ")
 	return sqlStr, finalArgs
+}
+
+// InvertSort inverts SQL operators and sort directions for keyset backward traversal.
+// Example: "<" becomes ">", "DESC" becomes "ASC".
+func InvertSort(operators, orderStrs []string) ([]string, []string) {
+	newOps := make([]string, len(operators))
+	newOrders := make([]string, len(orderStrs))
+	for i, op := range operators {
+		if op == "<" {
+			newOps[i] = ">"
+		} else {
+			newOps[i] = "<"
+		}
+	}
+	for i, order := range orderStrs {
+		up := strings.ToUpper(order)
+		if strings.HasSuffix(up, " DESC") {
+			newOrders[i] = order[:len(order)-5] + " ASC"
+		} else if strings.HasSuffix(up, " ASC") {
+			newOrders[i] = order[:len(order)-4] + " DESC"
+		} else {
+			newOrders[i] = order
+		}
+	}
+	return newOps, newOrders
+}
+
+// GenerateBidirectionalCursor abstracts all the complex logic to create a CursorPagination response.
+//   - items: the array of structs returned by the DB
+//   - limit: the limit specified in the request
+//   - direction: "next" or "prev"
+//   - currentCursor: the cursor passed in the request
+//   - extractFn: a callback to extract []interface{} keyset values from a single item
+func GenerateBidirectionalCursor[T any](items []T, limit int, direction, currentCursor string, extractFn func(T) []interface{}) *CursorPagination {
+	var nextCursor, prevCursor string
+	hasNext := false
+
+	if len(items) > 0 {
+		showPrev := true
+		if direction == "next" && currentCursor == "" {
+			showPrev = false
+		}
+		if direction == "prev" && len(items) < limit {
+			showPrev = false
+		}
+
+		if showPrev {
+			prevVals := extractFn(items[0])
+			prevCursor, _ = EncodeDynamicCursor(prevVals...)
+		}
+
+		if direction == "next" {
+			hasNext = len(items) == limit
+		} else {
+			hasNext = true
+		}
+
+		if hasNext {
+			nextVals := extractFn(items[len(items)-1])
+			nextCursor, _ = EncodeDynamicCursor(nextVals...)
+		}
+	}
+
+	limitStr := strconv.Itoa(limit)
+	p := NewCursor(limitStr, nextCursor, prevCursor, hasNext)
+	return &p
+}
+
+// DynamicSortParams holds configuration for generating dynamic keyset sorting.
+type DynamicSortParams struct {
+	SortBy         string            // User input e.g. "code,name"
+	SortType       string            // User input e.g. "asc,desc"
+	Direction      string            // User input "next" or "prev"
+	AllowedColumns map[string]string // Map of allowed fields to DB columns
+	UniqueColumn   string            // Tie-breaker DB column (e.g. "id")
+	UniqueSortType string            // "ASC" or "DESC" for tie-breaker
+}
+
+// DynamicSortResult holds the resulting SQL columns, operators, and ORDER BY clauses.
+type DynamicSortResult struct {
+	Columns   []string
+	Operators []string
+	OrderStrs []string
+}
+
+// PrepareDynamicSort parses sort strings, validates them against allowed columns,
+// appends the unique tie-breaker, and handles bidirectional inversion.
+func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
+	var columns, operators, orderStrs []string
+
+	sortBys := strings.Split(params.SortBy, ",")
+	sortTypes := strings.Split(params.SortType, ",")
+
+	for i, rawCol := range sortBys {
+		rawCol = strings.TrimSpace(rawCol)
+		if rawCol == "" {
+			continue
+		}
+
+		dbCol, ok := params.AllowedColumns[strings.ToLower(rawCol)]
+		if !ok {
+			continue
+		}
+
+		sortType := "asc"
+		if i < len(sortTypes) {
+			st := strings.ToLower(strings.TrimSpace(sortTypes[i]))
+			if st == "desc" {
+				sortType = "desc"
+			}
+		}
+
+		op := ">"
+		if sortType == "desc" {
+			op = "<"
+		}
+
+		columns = append(columns, dbCol)
+		operators = append(operators, op)
+		orderStrs = append(orderStrs, fmt.Sprintf("%s %s", dbCol, strings.ToUpper(sortType)))
+	}
+
+	// Always append unique column at the end
+	if params.UniqueColumn != "" {
+		hasUnique := false
+		for _, col := range columns {
+			if col == params.UniqueColumn {
+				hasUnique = true
+				break
+			}
+		}
+
+		if !hasUnique {
+			columns = append(columns, params.UniqueColumn)
+			st := strings.ToLower(params.UniqueSortType)
+			if st == "" {
+				st = "desc" // default to desc if not specified
+			}
+			op := ">"
+			if st == "desc" {
+				op = "<"
+			}
+			operators = append(operators, op)
+			orderStrs = append(orderStrs, fmt.Sprintf("%s %s", params.UniqueColumn, strings.ToUpper(st)))
+		}
+	}
+
+	if params.Direction == "prev" {
+		operators, orderStrs = InvertSort(operators, orderStrs)
+	}
+
+	return DynamicSortResult{
+		Columns:   columns,
+		Operators: operators,
+		OrderStrs: orderStrs,
+	}
+}
+
+// DynamicCursorRequest holds the standard fields required for dynamic keyset pagination in API requests.
+// It can be embedded into any DTO to instantly support bidirectional cursor pagination.
+type DynamicCursorRequest struct {
+	// SortBy supports multiple columns separated by comma (e.g. "status,name").
+	SortBy         string `json:"sort_by" query:"sort_by"`
+	// SortType supports multiple directions separated by comma (e.g. "asc,desc").
+	SortType       string `json:"sort_type" query:"sort_type"`
+	// Cursor expects a Base64 encoded string returned from the previous response. Leave empty for the first page.
+	Cursor         string `json:"cursor" query:"cursor"`
+	// Direction expects either "next" or "prev". Defaults to "next" if empty.
+	Direction      string `json:"direction" query:"direction"`
+	// Limit expects an integer to determine how many records to fetch (e.g. 10).
+	Limit          int    `json:"limit" query:"limit"`
+	// ShowPagination expects a boolean (true/false) to toggle pagination metadata in the response.
+	ShowPagination bool   `json:"show_pagination" query:"show_pagination"`
+}
+
+// BindDynamicCursorRequest extracts standard pagination parameters from an HTTP request.
+// It uses safe default values if the parameters are not provided in the query string.
+func BindDynamicCursorRequest(r *http.Request) DynamicCursorRequest {
+	return DynamicCursorRequest{
+		SortBy:         request.GetQueryString(r, "sort_by", ""),
+		SortType:       request.GetQueryString(r, "sort_type", ""),
+		Cursor:         request.GetQueryString(r, "cursor", ""),
+		Direction:      request.GetQueryString(r, "direction", "next"),
+		Limit:          request.GetQueryInt(r, "limit", 10),
+		ShowPagination: request.GetQueryBool(r, "show_pagination", true),
+	}
 }

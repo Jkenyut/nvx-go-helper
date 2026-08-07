@@ -28,8 +28,11 @@ package pagination
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
+
+	"github.com/Jkenyut/nvx-go-helper/request"
 )
 
 // Default values for pagination
@@ -67,22 +70,23 @@ func New(pageStr, limitStr string, total int) Pagination {
 	// Parse strings to integers with defaults
 	page := parseInt(pageStr, DefaultPage)
 	limit := parseInt(limitStr, DefaultLimit)
+	return NewFromInt(page, limit, total)
+}
 
+// NewFromInt creates a new Pagination from integer parameters.
+// Automatically sanitizes and applies safe defaults.
+func NewFromInt(page, limit, total int) Pagination {
 	// Sanitize Inputs
-	// Ensure page is at least 1
 	if page < 1 {
 		page = DefaultPage
 	}
-	// Ensure limit is at least 1
 	if limit < MinLimit {
 		limit = DefaultLimit
 	}
-	// Cap limit at MaxLimit safely
 	if limit > MaxLimit {
 		limit = MaxLimit
 	}
 
-	// Initialize struct
 	p := Pagination{
 		Page:  page,
 		Limit: limit,
@@ -111,6 +115,33 @@ func New(pageStr, limitStr string, total int) Pagination {
 	}
 
 	return p
+}
+
+// OffsetRequest holds the standard fields required for offset-based pagination in API requests.
+// It can be embedded into any DTO to instantly support offset pagination.
+type OffsetRequest struct {
+	// SortBy supports multiple columns separated by comma (e.g. "status,name").
+	SortBy         string `json:"sort_by" query:"sort_by"`
+	// SortType supports multiple directions separated by comma (e.g. "asc,desc").
+	SortType       string `json:"sort_type" query:"sort_type"`
+	// Page expects an integer representing the page number. Starts from 1.
+	Page           int    `json:"page" query:"page"`
+	// Limit expects an integer to determine how many records to fetch per page (e.g. 10).
+	Limit          int    `json:"limit" query:"limit"`
+	// ShowPagination expects a boolean (true/false) to toggle pagination metadata in the response.
+	ShowPagination bool   `json:"show_pagination" query:"show_pagination"`
+}
+
+// BindOffsetRequest extracts standard offset pagination parameters from an HTTP request.
+// It uses safe default values if the parameters are not provided in the query string.
+func BindOffsetRequest(r *http.Request) OffsetRequest {
+	return OffsetRequest{
+		SortBy:         request.GetQueryString(r, "sort_by", ""),
+		SortType:       request.GetQueryString(r, "sort_type", ""),
+		Page:           request.GetQueryInt(r, "page", DefaultPage),
+		Limit:          request.GetQueryInt(r, "limit", DefaultLimit),
+		ShowPagination: request.GetQueryBool(r, "show_pagination", true),
+	}
 }
 
 // Offset returns SQL OFFSET value (0-based)
