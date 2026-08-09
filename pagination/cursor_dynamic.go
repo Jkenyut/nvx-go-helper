@@ -176,6 +176,7 @@ type DynamicSortResult struct {
 // appends the unique tie-breaker, and handles bidirectional inversion.
 func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
 	var columns, operators, orderStrs []string
+	seenCols := make(map[string]bool)
 
 	sortBys := strings.Split(params.SortBy, ",")
 	sortTypes := strings.Split(params.SortType, ",")
@@ -190,6 +191,11 @@ func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
 		if !ok {
 			continue
 		}
+
+		if seenCols[dbCol] {
+			continue
+		}
+		seenCols[dbCol] = true
 
 		sortType := "asc"
 		if i < len(sortTypes) {
