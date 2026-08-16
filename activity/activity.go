@@ -24,8 +24,8 @@ const (
 	apiKey
 	requestID
 	userID
-	userType
 	userIP
+	userIPOrigin
 )
 
 // customKey is a typed key for custom fields, preventing collisions
@@ -80,17 +80,6 @@ func GetUserID(ctx context.Context) (string, bool) {
 	return v, ok
 }
 
-// WithUserType adds a user type (e.g., "admin", "customer") to the context.
-func WithUserType(ctx context.Context, utype string) context.Context {
-	return context.WithValue(ctx, userType, utype)
-}
-
-// GetUserType retrieves the user type from the context.
-func GetUserType(ctx context.Context) (string, bool) {
-	v, ok := ctx.Value(userType).(string)
-	return v, ok
-}
-
 // WithUserIP adds a user IP address to the context.
 func WithUserIP(ctx context.Context, uip string) context.Context {
 	return context.WithValue(ctx, userIP, uip)
@@ -99,6 +88,16 @@ func WithUserIP(ctx context.Context, uip string) context.Context {
 // GetUserIP retrieves the user IP address from the context.
 func GetUserIP(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(userIP).(string)
+	return v, ok
+}
+
+func WithUserIPOrigin(ctx context.Context, uip string) context.Context {
+	return context.WithValue(ctx, userIPOrigin, uip)
+}
+
+// GetUserIPOrigin retrieves the user IP address from the context.
+func GetUserIPOrigin(ctx context.Context) (string, bool) {
+	v, ok := ctx.Value(userIPOrigin).(string)
 	return v, ok
 }
 
@@ -126,30 +125,30 @@ func GetAllFieldsFromContext(ctx context.Context) map[string]interface{} {
 
 	// Add transaction_id if present
 	if id, ok := GetTransactionID(ctx); ok {
-		fields["nvx_transaction_id"] = id // generate by middleware
+		fields["transaction_id"] = id // generate by middleware
 	}
 
 	// Add request_id if present
 	if v, ok := GetRequestID(ctx); ok {
-		fields["nvx_request_id"] = v // from client
+		fields["request_id"] = v // from client
 	}
 
 	// Add client_id if present
 	if v, ok := GetAPIKey(ctx); ok {
-		fields["nvx_api_key"] = v // from client
+		fields["api_key"] = v // from client
 	}
 
 	if v, ok := GetUserID(ctx); ok {
 		// Add payload and result (can be nil)
-		fields["nvx_user_id"] = v // from token
-	}
-
-	if v, ok := GetUserType(ctx); ok {
-		fields["nvx_user_type"] = v // from token
+		fields["user_id"] = v // from token
 	}
 
 	if v, ok := GetUserIP(ctx); ok {
-		fields["nvx_user_ip"] = v // from client
+		fields["user_ip"] = v // from proxy
+	}
+
+	if v, ok := GetUserIPOrigin(ctx); ok {
+		fields["user_ip_origin"] = v // from client
 	}
 
 	return fields

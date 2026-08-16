@@ -30,7 +30,7 @@ userID, ok := activity.GetUserID(ctx)
 
 // Get all fields as map for structured loggers (Zap, Logrus, etc.)
 fields := activity.GetAllFieldsFromContext(ctx)
-// map[nvx_request_id:"req-123" nvx_user_id:"user-001"]
+// map[request_id:"req-123" user_id:"user-001"]
 ```
 
 ### 2. Cryptoutil (`/cryptoutil`)

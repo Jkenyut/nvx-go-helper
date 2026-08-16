@@ -42,14 +42,6 @@ func TestActivityContext(t *testing.T) {
 		assert.Equal(t, uid, got)
 	})
 
-	t.Run("UserType", func(t *testing.T) {
-		utype := "admin"
-		ctx = WithUserType(ctx, utype)
-		got, ok := GetUserType(ctx)
-		assert.True(t, ok)
-		assert.Equal(t, utype, got)
-	})
-
 	t.Run("UserIP", func(t *testing.T) {
 		uip := "127.0.0.1"
 		ctx = WithUserIP(ctx, uip)
@@ -93,12 +85,12 @@ func TestActivityContext(t *testing.T) {
 
 	t.Run("GetAllFieldsFromContext", func(t *testing.T) {
 		fields := GetAllFieldsFromContext(ctx)
-		assert.Equal(t, "trx-123", fields["nvx_transaction_id"])
-		assert.Equal(t, "api-456", fields["nvx_api_key"])
-		assert.Equal(t, "req-789", fields["nvx_request_id"])
-		assert.Equal(t, "user-001", fields["nvx_user_id"])
-		assert.Equal(t, "admin", fields["nvx_user_type"])
-		assert.Equal(t, "127.0.0.1", fields["nvx_user_ip"])
+		assert.Equal(t, "trx-123", fields["transaction_id"])
+		assert.Equal(t, "api-456", fields["api_key"])
+		assert.Equal(t, "req-789", fields["request_id"])
+		assert.Equal(t, "user-001", fields["user_id"])
+		assert.Equal(t, "admin", fields["user_type"])
+		assert.Equal(t, "127.0.0.1", fields["user_ip"])
 	})
 
 	t.Run("GetAllFieldsFromContext_Empty", func(t *testing.T) {
