@@ -144,11 +144,11 @@ func GetAllFieldsFromContext(ctx context.Context) map[string]interface{} {
 	}
 
 	if v, ok := GetUserIP(ctx); ok {
-		fields["user_ip"] = v // from proxy
+		fields["user_ip"] = v // from client
 	}
 
 	if v, ok := GetUserIPOrigin(ctx); ok {
-		fields["user_ip_origin"] = v // from client
+		fields["user_ip_origin"] = v // from proxy
 	}
 
 	return fields
