@@ -306,9 +306,16 @@ func ToSafeString(v any) string {
 	}
 	// Replace unsafe characters
 	return strings.Map(func(r rune) rune {
-		if r == ' ' || r == '/' || r == '\\' || r == ':' {
+		// Remove null-byte entirely (prevents path traversal vulnerability)
+		if r == 0 {
+			return -1
+		}
+		
+		// Replace spaces, tabs, newlines, and other dangerous characters with '_'
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' || r == '/' || r == '\\' || r == ':' {
 			return '_'
 		}
+		
 		return r
 	}, s)
 }

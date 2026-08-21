@@ -236,3 +236,67 @@ func Timestamp(t time.Time) string {
 	}
 	return fmt.Sprintf("%d", t.Unix())
 }
+
+// =============================================================================
+// DATE BOUNDARY HELPERS
+// =============================================================================
+
+// StartOfDay returns the time at 00:00:00 for the given time's date and location.
+func StartOfDay(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+}
+
+// EndOfDay returns the time at 23:59:59.999999999 for the given time's date and location.
+func EndOfDay(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 23, 59, 59, 999999999, t.Location())
+}
+
+// StartOfMonth returns the time at 00:00:00 on the first day of the month for the given time's location.
+func StartOfMonth(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	y, m, _ := t.Date()
+	return time.Date(y, m, 1, 0, 0, 0, 0, t.Location())
+}
+
+// EndOfMonth returns the time at 23:59:59.999999999 on the last day of the month for the given time's location.
+func EndOfMonth(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	y, m, _ := t.Date()
+	// Go to the first day of the next month, then subtract 1 nanosecond
+	return time.Date(y, m+1, 1, 0, 0, 0, 0, t.Location()).Add(-1 * time.Nanosecond)
+}
+
+// StartOfWeek returns the time at 00:00:00 on Monday of the week for the given time's location.
+func StartOfWeek(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	offset := int(time.Monday - t.Weekday())
+	if offset > 0 {
+		offset = -6 // If Sunday, go back 6 days to Monday
+	}
+	y, m, d := t.AddDate(0, 0, offset).Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+}
+
+// EndOfWeek returns the time at 23:59:59.999999999 on Sunday of the week for the given time's location.
+func EndOfWeek(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	start := StartOfWeek(t)
+	// Add 6 days to Monday to get Sunday, then take EndOfDay
+	return EndOfDay(start.AddDate(0, 0, 6))
+}

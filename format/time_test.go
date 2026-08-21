@@ -24,8 +24,8 @@ func TestNowWIB(t *testing.T) {
 	now := NowWIB()
 	assert.Equal(t, "Asia/Jakarta", now.Location().String())
 
-	// FIXED: Gunakan time.FixedZone yang sama (bukan .UTC() yang bisa dipengaruhi local)
-	// WIB offset = +7 jam = 7*3600 detik
+	// FIXED: Use the same time.FixedZone (not .UTC() which can be affected by local)
+	// WIB offset = +7 hours = 7*3600 seconds
 	expectedOffset := 7 * 60 * 60
 	_, actualOffset := now.Zone()
 	assert.Equal(t, expectedOffset, actualOffset)
@@ -39,7 +39,7 @@ func TestNow(t *testing.T) {
 }
 
 func TestToWIB(t *testing.T) {
-	// Gunakan waktu tetap di UTC
+	// Use a fixed time in UTC
 	utcTime := time.Date(2025, 10, 20, 8, 30, 45, 123456789, time.UTC)
 	wibTime := ToWIB(utcTime)
 
@@ -49,9 +49,9 @@ func TestToWIB(t *testing.T) {
 	assert.Equal(t, 45, wibTime.Second())
 	assert.Equal(t, 123456789, wibTime.Nanosecond())
 
-	// Cek offset langsung dari .Zone()
+	// Check offset directly from .Zone()
 	_, offset := wibTime.Zone()
-	assert.Equal(t, 7*3600, offset) // +7 jam = 25200 detik
+	assert.Equal(t, 7*3600, offset) // +7 hours = 25200 seconds
 }
 
 func TestToUTC(t *testing.T) {
@@ -127,4 +127,97 @@ func TestIsZeroOrDefault(t *testing.T) {
 			assert.Equal(t, tt.want, tt.t.IsZero())
 		})
 	}
+}
+
+func TestStartOfDay(t *testing.T) {
+	tm := time.Date(2025, 10, 20, 15, 30, 45, 123456789, time.UTC)
+	start := StartOfDay(tm)
+	assert.Equal(t, 0, start.Hour())
+	assert.Equal(t, 0, start.Minute())
+	assert.Equal(t, 0, start.Second())
+	assert.Equal(t, 0, start.Nanosecond())
+	assert.Equal(t, 2025, start.Year())
+	assert.Equal(t, time.Month(10), start.Month())
+	assert.Equal(t, 20, start.Day())
+	assert.Equal(t, time.UTC, start.Location())
+
+	assert.True(t, StartOfDay(time.Time{}).IsZero())
+}
+
+func TestEndOfDay(t *testing.T) {
+	tm := time.Date(2025, 10, 20, 15, 30, 45, 123456789, time.UTC)
+	end := EndOfDay(tm)
+	assert.Equal(t, 23, end.Hour())
+	assert.Equal(t, 59, end.Minute())
+	assert.Equal(t, 59, end.Second())
+	assert.Equal(t, 999999999, end.Nanosecond())
+	assert.Equal(t, 2025, end.Year())
+	assert.Equal(t, time.Month(10), end.Month())
+	assert.Equal(t, 20, end.Day())
+
+	assert.True(t, EndOfDay(time.Time{}).IsZero())
+}
+
+func TestStartOfMonth(t *testing.T) {
+	tm := time.Date(2025, 10, 20, 15, 30, 45, 123456789, WIB)
+	start := StartOfMonth(tm)
+	assert.Equal(t, 2025, start.Year())
+	assert.Equal(t, time.Month(10), start.Month())
+	assert.Equal(t, 1, start.Day())
+	assert.Equal(t, 0, start.Hour())
+	assert.Equal(t, WIB.String(), start.Location().String())
+
+	assert.True(t, StartOfMonth(time.Time{}).IsZero())
+}
+
+func TestEndOfMonth(t *testing.T) {
+	// Test a month with 31 days
+	tm := time.Date(2025, 10, 20, 15, 30, 45, 0, WIB)
+	end := EndOfMonth(tm)
+	assert.Equal(t, 2025, end.Year())
+	assert.Equal(t, time.Month(10), end.Month())
+	assert.Equal(t, 31, end.Day())
+	assert.Equal(t, 23, end.Hour())
+	assert.Equal(t, 59, end.Minute())
+	assert.Equal(t, 59, end.Second())
+	assert.Equal(t, 999999999, end.Nanosecond())
+
+	// Test leap year February
+	tmFeb := time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC)
+	endFeb := EndOfMonth(tmFeb)
+	assert.Equal(t, 29, endFeb.Day())
+
+	assert.True(t, EndOfMonth(time.Time{}).IsZero())
+}
+
+func TestStartOfWeek(t *testing.T) {
+	// 2025-10-20 is a Monday
+	tmMon := time.Date(2025, 10, 20, 15, 30, 0, 0, time.UTC)
+	startMon := StartOfWeek(tmMon)
+	assert.Equal(t, 20, startMon.Day())
+	assert.Equal(t, 0, startMon.Hour())
+
+	// 2025-10-22 is a Wednesday
+	tmWed := time.Date(2025, 10, 22, 15, 30, 0, 0, time.UTC)
+	startWed := StartOfWeek(tmWed)
+	assert.Equal(t, 20, startWed.Day()) // Should go back to Monday 20th
+
+	// 2025-10-26 is a Sunday
+	tmSun := time.Date(2025, 10, 26, 15, 30, 0, 0, time.UTC)
+	startSun := StartOfWeek(tmSun)
+	assert.Equal(t, 20, startSun.Day()) // Should go back to Monday 20th
+
+	assert.True(t, StartOfWeek(time.Time{}).IsZero())
+}
+
+func TestEndOfWeek(t *testing.T) {
+	// 2025-10-22 is a Wednesday
+	tmWed := time.Date(2025, 10, 22, 15, 30, 0, 0, time.UTC)
+	endWed := EndOfWeek(tmWed)
+	assert.Equal(t, 26, endWed.Day()) // Sunday 26th
+	assert.Equal(t, 23, endWed.Hour())
+	assert.Equal(t, 59, endWed.Minute())
+	assert.Equal(t, 59, endWed.Second())
+
+	assert.True(t, EndOfWeek(time.Time{}).IsZero())
 }

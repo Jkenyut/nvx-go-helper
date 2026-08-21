@@ -42,10 +42,10 @@ Industry-standard password hashing using the PHC string format (single column st
 import "github.com/Jkenyut/nvx-go-helper/cryptoutil"
 
 // 1. Hash password (returns $argon2id$v=19$m=32768,t=1,p=2$salt$hash)
-encodedHash, _ := cryptoutil.HashPassword("Katakunciku123") 
+encodedHash, _ := cryptoutil.HashPassword("MySecretPassword123") 
 
 // 2. Verify password (automatically extracts parameters & salt)
-isValid, _ := cryptoutil.VerifyPassword("Katakunciku123", encodedHash)
+isValid, _ := cryptoutil.VerifyPassword("MySecretPassword123", encodedHash)
 ```
 
 **Asymmetric / Hybrid Encryption (ECC + AES-GCM)**
@@ -97,13 +97,18 @@ dbHost := env.GetString("DB_HOST", "localhost")
 ```
 
 ### 4. Format (`/format`)
-Helpers for string manipulation and formatting.
+Helpers for string manipulation, formatting, and date boundary calculations.
 ```go
 import "github.com/Jkenyut/nvx-go-helper/format"
 
 fmt.Println(format.Rupiah(150000))              // "150.000,00"
 fmt.Println(format.BRINorek("123456789012345")) // "1234-56-789012-34-5"
 fmt.Println(format.ToSafeString("User Name!"))  // "User_Name_"
+
+// Date Boundary Helpers
+now := format.Now()
+startOfDay := format.StartOfDay(now) // 00:00:00
+endOfMonth := format.EndOfMonth(now) // 23:59:59.999999999 of the last day
 ```
 
 ### 5. Pointer (`/pointer`)
