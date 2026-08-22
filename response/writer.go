@@ -18,9 +18,9 @@ func SetHeaders(w http.ResponseWriter, headers map[string]string) {
     }
 }
 
-// WriteResponse writes the Response as JSON to the http.ResponseWriter.
+// WriteJSONResponse writes the Response as JSON to the http.ResponseWriter.
 // It sets the appropriate status code and Content-Type header.
-func WriteResponse(w http.ResponseWriter, resp Response) {
+func WriteJSONResponse(w http.ResponseWriter, resp Response) {
     // Ensure status code is set
     if resp.Meta.StatusCode == 0 {
         resp.Meta.StatusCode = 200
