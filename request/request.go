@@ -87,7 +87,7 @@ func GetQueryStringSlice(r *http.Request, key string) []string {
 	if val == "" {
 		return nil
 	}
-	
+
 	var result []string
 	parts := strings.Split(val, ",")
 	for _, p := range parts {
@@ -106,7 +106,7 @@ func GetQueryIntSlice(r *http.Request, key string) []int {
 	if val == "" {
 		return nil
 	}
-	
+
 	var result []int
 	parts := strings.Split(val, ",")
 	for _, p := range parts {
@@ -140,7 +140,7 @@ func GetQueryMapSlice(r *http.Request, key string, delimiter string) map[string]
 		if len(parts) != 2 {
 			continue // Ignore if it doesn't match the delimiter format
 		}
-		
+
 		groupKey := strings.TrimSpace(parts[0])
 		if groupKey == "" {
 			continue
@@ -175,7 +175,7 @@ func GetQueryMapIntSlice(r *http.Request, key string, delimiter string) map[stri
 		if len(parts) != 2 {
 			continue // Ignore if it doesn't match the delimiter format
 		}
-		
+
 		groupKey := strings.TrimSpace(parts[0])
 		if groupKey == "" {
 			continue
@@ -213,7 +213,7 @@ func GetQueryMapBoolSlice(r *http.Request, key string, delimiter string) map[str
 		if len(parts) != 2 {
 			continue // Ignore if it doesn't match the delimiter format
 		}
-		
+
 		groupKey := strings.TrimSpace(parts[0])
 		if groupKey == "" {
 			continue
@@ -277,6 +277,15 @@ func GetBearerToken(r *http.Request) string {
 		return parts[1]
 	}
 	return ""
+}
+
+// GetHeader retrieves the first value of the specified header name from the request.
+// It returns the header value and a boolean indicating whether the header was present.
+func GetHeader(r *http.Request, name string) (string, bool) {
+	if values, ok := r.Header[name]; ok && len(values) > 0 {
+		return values[0], true
+	}
+	return "", false
 }
 
 // GetBasicAuthUsernamePassword extracts username and password from Basic Authentication header
