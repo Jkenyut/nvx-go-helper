@@ -14,7 +14,7 @@ import (
 
 // BindJSON reads the HTTP request body and decodes the JSON data into the provided struct (dest).
 // It verifies that the Content-Type is application/json and uses bytedance/sonic for high-performance JSON decoding.
-func BindJSON(r *http.Request, dest interface{}) error {
+func BindJSON(r *http.Request, dest any) error {
 	// Ensure the request has a JSON Content-Type
 	contentType := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "application/json") {
@@ -37,7 +37,7 @@ func BindJSON(r *http.Request, dest interface{}) error {
 
 // BindAndValidate reads the HTTP request body, decodes it, and validates the struct
 // using the project's validator package.
-func BindAndValidate(r *http.Request, dest interface{}) error {
+func BindAndValidate(r *http.Request, dest any) error {
 	if err := BindJSON(r, dest); err != nil {
 		return err
 	}

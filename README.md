@@ -162,17 +162,23 @@ func CreateUser(c *gin.Context) {
 ```
 
 ### 8. Pagination (`/pagination`)
-Robust helper for handling offset-based and cursor-based pagination query parameters. Safe from "Ghost Pages" bugs.
+Comprehensive, bidirectional dynamic keyset (cursor) and offset pagination with built-in whitelisted filtering, search, and type-safe generic responses. Safe from "ghost pages" and `OFFSET` performance bottlenecks.
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/pagination"
 
-// Offset-Based
-p := pagination.New("100", "10", 50) // page=100 will be capped safely to max page=5!
-db.Limit(p.Limit).Offset(p.Offset()).Find(&users)
+// 1. Traditional Offset with Whitelisted Filtering & Response Wrapper
+req := pagination.BindOffsetFilterRequest(r, map[string]string{"status": "users.status"})
+pageData := pagination.NewFromInt(req.Page, req.Limit, totalCount)
+resp := pagination.NewListResponse(users, pageData)
 
-// Cursor-Based (Enterprise Standard)
-cp := pagination.NewCursor("20", "next_xyz", "", true)
+// 2. Modern Dynamic Keyset Cursor (Auto-decoded CursorValues)
+cursorReq := pagination.BindCursorFilterRequest(r, map[string]string{"name": "user_name"})
+cursorMeta := pagination.GenerateBidirectionalCursor(users, cursorReq.Limit, cursorReq.Direction, cursorReq.Cursor, extractFn)
+cursorResp := pagination.NewCursorListResponse(users, cursorMeta)
+
+// 3. Unified Mode (Auto-detects cursor vs offset in a single endpoint)
+unified := pagination.BindUnifiedFilterRequest(r, allowedColumns)
 ```
 
 ### 9. Worker Pool (`/worker`)

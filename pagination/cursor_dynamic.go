@@ -103,11 +103,12 @@ func InvertSort(operators, orderStrs []string) ([]string, []string) {
 	}
 	for i, order := range orderStrs {
 		up := strings.ToUpper(order)
-		if strings.HasSuffix(up, " DESC") {
+		switch {
+		case strings.HasSuffix(up, " DESC"):
 			newOrders[i] = order[:len(order)-5] + " ASC"
-		} else if strings.HasSuffix(up, " ASC") {
+		case strings.HasSuffix(up, " ASC"):
 			newOrders[i] = order[:len(order)-4] + " DESC"
-		} else {
+		default:
 			newOrders[i] = order
 		}
 	}
@@ -255,17 +256,17 @@ func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
 // It can be embedded into any DTO to instantly support bidirectional cursor pagination.
 type DynamicCursorRequest struct {
 	// SortBy supports multiple columns separated by comma (e.g. "status,name").
-	SortBy         string `json:"sort_by" query:"sort_by"`
+	SortBy string `json:"sort_by" query:"sort_by"`
 	// SortType supports multiple directions separated by comma (e.g. "asc,desc").
-	SortType       string `json:"sort_type" query:"sort_type"`
+	SortType string `json:"sort_type" query:"sort_type"`
 	// Cursor expects a Base64 encoded string returned from the previous response. Leave empty for the first page.
-	Cursor         string `json:"cursor" query:"cursor"`
+	Cursor string `json:"cursor" query:"cursor"`
 	// Direction expects either "next" or "prev". Defaults to "next" if empty.
-	Direction      string `json:"direction" query:"direction"`
+	Direction string `json:"direction" query:"direction"`
 	// Limit expects an integer to determine how many records to fetch (e.g. 10).
-	Limit          int    `json:"limit" query:"limit"`
+	Limit int `json:"limit" query:"limit"`
 	// ShowPagination expects a boolean (true/false) to toggle pagination metadata in the response.
-	ShowPagination bool   `json:"show_pagination" query:"show_pagination"`
+	ShowPagination bool `json:"show_pagination" query:"show_pagination"`
 }
 
 // BindDynamicCursorRequest extracts standard pagination parameters from an HTTP request.

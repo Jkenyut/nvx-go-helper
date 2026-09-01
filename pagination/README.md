@@ -1,127 +1,193 @@
-# Keyset / Cursor Pagination Helper
+# Pagination Helper (`/pagination`)
 
-This package provides an industry-standard implementation of **Bidirectional Dynamic Keyset Pagination** (also known as cursor pagination). It allows clients to sort API tables dynamically (e.g. by `name`, `status`, `created_at`) while maintaining extreme performance (no `OFFSET` bottleneck) and strict consistency (no duplicate or skipped records).
+Production-ready, bidirectional keyset (cursor) and traditional offset pagination for Go REST APIs. Zero dependencies, type-safe generic responses, whitelisted column filtering, and protection against large query DoS attacks.
 
-## Features
-- **Dynamic Keyset Support:** Can parse and build cursors that contain 1, 2, or 3+ column values at once. Simply send comma-separated strings (e.g. `sort_by=status,name` and `sort_type=asc,desc`) from the frontend.
-- **Tie-Breaker Safety:** Automatically appends a unique column (e.g., `id`) to ensure deterministic sorting, preventing infinite loops.
-- **Bidirectional Navigation:** Safely handles `<` and `>` SQL operator inversions when the user clicks "Previous Page", and reverses the output arrays seamlessly.
-- **Base64 Cursors:** Hides implementation details from the client.
-- **DTO Binding:** Offers a plug-and-play struct (`DynamicCursorRequest`) to avoid boilerplate code in HTTP handlers.
+## 🚀 Key Capabilities
 
-## Getting Started
+- **Bidirectional Dynamic Keyset (Cursor):** Supports dynamic multi-column sorting (e.g., `sort_by=status,created_at`) with automatic SQL operator inversion (`<` / `>`) and tie-breaker safety.
+- **Traditional Offset-Based:** Sanitized `page` and `limit`, safe SQL `Offset()` calculation, and zero ghost-page bugs.
+- **Unified Mode:** Supports both pagination styles in a single endpoint with automatic detection.
+- **Smart Filtering & Search:** Parses grouped filters (`?filter=status:active,pending`) and direct query parameters (`?status=active`) with SQL injection protection via `allowedFilters` whitelisting.
+- **Generic Responses:** Standardized `ListResponse[T]` and `CursorListResponse[T]` with RFC-compliant metadata.
 
-### 1. The DTO & HTTP Handler
-Instead of defining cursor variables in every Request struct, embed the `DynamicCursorRequest`:
+---
+
+## 📖 Quickstart & Patterns
+
+### 1. Traditional Offset Pagination
+
+Ideal for admin dashboards and tables requiring jump-to-page navigation.
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/pagination"
 
-type UserGetRequest struct {
-	Search string `json:"search"`
-	
-	// Magic field that instantly injects all pagination params
-	pagination.DynamicCursorRequest 
+// 1. In Handler: Extract pagination + filters safely
+allowedFilters := map[string]string{
+	"status": "users.status",
+	"role":   "roles.name",
+}
+req := pagination.BindOffsetFilterRequest(r, allowedFilters)
+
+// 2. In Repository: Calculate safe SQL offset and limit
+totalCount := 150
+pageData := pagination.NewFromInt(req.Page, req.Limit, totalCount)
+
+// db.Limit(pageData.Limit).Offset(pageData.Offset())
+// if req.HasFilter("users.status") { ... }
+
+// 3. In Response: Wrap into standardized generic response
+resp := pagination.NewListResponse(users, pageData)
+response.OK(ctx, "success", resp)
+```
+
+**JSON Output:**
+```json
+{
+  "items": [...],
+  "pagination": {
+    "page": 2,
+    "limit": 10,
+    "total": 150,
+    "total_pages": 15,
+    "has_next": true,
+    "has_prev": true,
+    "next_page": 3,
+    "prev_page": 1
+  }
 }
 ```
 
-In your handler, extract it easily:
-```go
-req := UserGetRequest{
-	Search:               request.GetQueryString(r, "search", ""),
-	DynamicCursorRequest: pagination.BindDynamicCursorRequest(r), // Automates extraction & default values
-}
-```
+---
 
-### 2. The Repository (Database / SQL)
-You must prepare the SQL strings based on the user's requested sort options. We provide `PrepareDynamicSort` to handle the heavy lifting (anti-SQL-Injection mapped columns, appending unique keys, and handling `direction=prev`).
+### 2. Dynamic Keyset Cursor Pagination
+
+Ideal for infinite scrolling, mobile feeds, and high-performance, high-volume datasets (eliminates `OFFSET` bottlenecks).
 
 ```go
-allowedSort := map[string]string{
+import (
+	"github.com/Jkenyut/nvx-go-helper/pagination"
+	"github.com/Jkenyut/nvx-go-helper/sliceutil"
+)
+
+// 1. In Handler: Binds query params and automatically decodes cursor
+allowedColumns := map[string]string{
 	"name":       "user_name",
 	"created_at": "user_created_at",
 }
+req := pagination.BindCursorFilterRequest(r, allowedColumns)
 
-// 1. Prepare SQL
+// 2. In Repository: Prepare SQL sort and keyset WHERE conditions
 sortRes := pagination.PrepareDynamicSort(pagination.DynamicSortParams{
 	SortBy:         req.SortBy,
 	SortType:       req.SortType,
 	Direction:      req.Direction,
-	AllowedColumns: allowedSort,
-	UniqueColumn:   "user_id", // Essential to prevent skipped rows
+	AllowedColumns: allowedColumns,
+	UniqueColumn:   "user_id", // Mandatory tie-breaker to prevent skipped rows
 	UniqueSortType: "DESC",
 })
 
-// sortRes.Columns -> ["user_name", "user_id"]
-// sortRes.Operators -> [">", "<"]
-// sortRes.OrderStrs -> ["user_name ASC", "user_id DESC"]
-
-// 2. Decode the cursor sent by user
-var cursorVals []interface{}
-if req.Cursor != "" {
-	cursorVals, _ = pagination.DecodeDynamicCursor(req.Cursor)
-}
-
-// 3. Generate SQL string (for Squirrel / GORM)
 var sqlWhere string
-var sqlArgs []interface{}
-if len(cursorVals) > 0 {
-	sqlWhere, sqlArgs = pagination.BuildDynamicKeyset(sortRes.Columns, sortRes.Operators, cursorVals)
+var sqlArgs []any
+if len(req.CursorValues) > 0 {
+	sqlWhere, sqlArgs = pagination.BuildDynamicKeyset(sortRes.Columns, sortRes.Operators, req.CursorValues)
 }
 
-// Resulting sqlWhere: "(user_name > ?) OR (user_name = ? AND user_id < ?)"
-```
+// Execute query:
+// q = q.Where(sqlWhere, sqlArgs...).Limit(req.Limit)
+// for _, order := range sortRes.OrderStrs { q = q.OrderBy(order) }
 
-### 3. The Service Layer (Business Logic)
-Once you receive the `users` array from your database, pass it into the generator. It will construct the `next_cursor` and `prev_cursor` correctly based on the items in the slice.
-
-```go
-import "github.com/Jkenyut/nvx-go-helper/sliceutil"
-
-// If the user requested the 'prev' page, the DB returned it backwards. You MUST reverse it:
+// 3. In Service: Handle backward reversal & generate next/prev cursors
 if req.Direction == "prev" {
 	users = sliceutil.Reverse(users)
 }
 
-// Generate the Cursor output:
-pageRes := pagination.GenerateBidirectionalCursor(
-	users, 
-	req.Limit, 
-	req.Direction, 
-	req.Cursor, 
-	func(u User) []interface{} {
-		// Define how to extract the struct values matching the sort request!
-		var vals []interface{}
-		
-		sortBys := strings.Split(req.SortBy, ",")
-		for _, col := range sortBys {
-			col = strings.ToLower(strings.TrimSpace(col))
-			switch col {
-			case "name":
-				vals = append(vals, u.Name)
-			case "created_at":
-				vals = append(vals, u.CreatedAt)
-			}
-		}
-		
-		// The tie-breaker must always be manually appended at the end
-		vals = append(vals, u.ID)
-		return vals
+cursorMeta := pagination.GenerateBidirectionalCursor(
+	users,
+	req.Limit,
+	req.Direction,
+	req.Cursor,
+	func(u User) []any {
+		// Extract values matching dynamic sort columns + unique column
+		return []any{u.Name, u.CreatedAt, u.ID}
 	},
 )
 
-// Now pageRes contains:
-// - NextCursor (Base64)
-// - PrevCursor (Base64)
-// - HasNext (bool)
+// 4. In Response: Return standardized cursor response
+resp := pagination.NewCursorListResponse(users, cursorMeta)
+response.OK(ctx, "success", resp)
 ```
 
-## How It Works Under The Hood
+**JSON Output:**
+```json
+{
+  "items": [...],
+  "pagination": {
+    "limit": 10,
+    "next_cursor": "eyJhbGciOiJ...",
+    "prev_cursor": "eyJhbGciOiJ...",
+    "has_next": true
+  }
+}
+```
 
-If a user sorts by `status ASC` but 10 users have the same status, traditional 1-column cursors fail (because `status > 'active'` skips the other active users). 
-This package automatically generates SQL equivalent to:
+---
+
+### 3. Unified Mode (Hybrid Endpoint)
+
+Allow API consumers to choose either offset (`?page=2&limit=20`) or cursor (`?cursor=xyz&direction=next`) within the same endpoint:
+
+```go
+req := pagination.BindUnifiedFilterRequest(r, allowedFilters)
+
+if req.IsCursor {
+	// Execute cursor keyset logic (using req.DynamicCursorRequest and req.CursorValues)
+} else {
+	// Execute traditional offset logic (using req.OffsetRequest)
+}
+```
+
+---
+
+## 🛠️ Filter & Query Parameter Syntax
+
+The binder automatically processes and normalizes two common query parameter styles:
+
+1. **Grouped Syntax:**
+   ```
+   GET /users?filter=status:active,pending&filter=role:admin
+   ```
+2. **Direct Syntax:**
+   ```
+   GET /users?status=active,pending&role=admin
+   ```
+
+### Safety & Features:
+- **SQL Injection Safe:** Only parameters listed in `allowedFilters` are parsed.
+- **Automatic Deduplication:** Duplicate values in a column are collapsed into unique slices.
+- **Search Support:** Reads `?search=term` via `req.Search`.
+- **Max Limit Protection:** Caps client-requested limits to prevent database strain (e.g. `BindOffsetFilterRequest(r, allowedFilters, 50)`).
+- **Convenient Filter Helpers:**
+  ```go
+  if req.HasFilter("users.status") {
+  	statuses := req.GetFilter("users.status")           // []string{"active", "pending"}
+  	primaryStatus := req.GetFirstFilter("users.status") // "active"
+  }
+  ```
+
+---
+
+## ⚙️ Under The Hood: Dynamic Keyset Pagination
+
+When multiple rows share the same column value (e.g., duplicate timestamps or statuses), traditional single-column keyset conditions fail.
+
+`pagination.BuildDynamicKeyset` generates mathematically sound nested composite SQL conditions:
+
 ```sql
-WHERE (status > ?) OR (status = ? AND id < ?)
-ORDER BY status ASC, id DESC
+-- For 2 columns (status, id):
+(status > ?) OR (status = ? AND id < ?)
+
+-- For 3 columns (status, created_at, id):
+(status > ?) OR (status = ? AND created_at > ?) OR (status = ? AND created_at = ? AND id < ?)
 ```
-This guarantees mathematically perfect pagination at all scales.
+
+Combined with automatic operator flipping when navigating backwards (`direction=prev`), this guarantees deterministic, zero-duplicate, and zero-skip pagination at enterprise scale.

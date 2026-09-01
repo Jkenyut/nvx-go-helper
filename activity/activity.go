@@ -91,6 +91,7 @@ func GetUserIP(ctx context.Context) (string, bool) {
 	return v, ok
 }
 
+// WithUserIPOrigin adds the original user IP (from proxy) to the context.
 func WithUserIPOrigin(ctx context.Context, uip string) context.Context {
 	return context.WithValue(ctx, userIPOrigin, uip)
 }

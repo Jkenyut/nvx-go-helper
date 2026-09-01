@@ -121,15 +121,15 @@ func NewFromInt(page, limit, total int) Pagination {
 // It can be embedded into any DTO to instantly support offset pagination.
 type OffsetRequest struct {
 	// SortBy supports multiple columns separated by comma (e.g. "status,name").
-	SortBy         string `json:"sort_by" query:"sort_by"`
+	SortBy string `json:"sort_by" query:"sort_by"`
 	// SortType supports multiple directions separated by comma (e.g. "asc,desc").
-	SortType       string `json:"sort_type" query:"sort_type"`
+	SortType string `json:"sort_type" query:"sort_type"`
 	// Page expects an integer representing the page number. Starts from 1.
-	Page           int    `json:"page" query:"page"`
+	Page int `json:"page" query:"page"`
 	// Limit expects an integer to determine how many records to fetch per page (e.g. 10).
-	Limit          int    `json:"limit" query:"limit"`
+	Limit int `json:"limit" query:"limit"`
 	// ShowPagination expects a boolean (true/false) to toggle pagination metadata in the response.
-	ShowPagination bool   `json:"show_pagination" query:"show_pagination"`
+	ShowPagination bool `json:"show_pagination" query:"show_pagination"`
 }
 
 // BindOffsetRequest extracts standard offset pagination parameters from an HTTP request.

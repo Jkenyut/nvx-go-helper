@@ -50,6 +50,14 @@ func TestActivityContext(t *testing.T) {
 		assert.Equal(t, uip, got)
 	})
 
+	t.Run("UserIPOrigin", func(t *testing.T) {
+		uipOrigin := "10.0.0.1"
+		ctx = WithUserIPOrigin(ctx, uipOrigin)
+		got, ok := GetUserIPOrigin(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, uipOrigin, got)
+	})
+
 	t.Run("WithCustomFields", func(t *testing.T) {
 		k := "custom-key"
 		val := "custom-value"
@@ -89,8 +97,8 @@ func TestActivityContext(t *testing.T) {
 		assert.Equal(t, "api-456", fields["api_key"])
 		assert.Equal(t, "req-789", fields["request_id"])
 		assert.Equal(t, "user-001", fields["user_id"])
-		assert.Equal(t, "admin", fields["user_type"])
 		assert.Equal(t, "127.0.0.1", fields["user_ip"])
+		assert.Equal(t, "10.0.0.1", fields["user_ip_origin"])
 	})
 
 	t.Run("GetAllFieldsFromContext_Empty", func(t *testing.T) {

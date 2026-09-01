@@ -310,12 +310,12 @@ func ToSafeString(v any) string {
 		if r == 0 {
 			return -1
 		}
-		
+
 		// Replace spaces, tabs, newlines, and other dangerous characters with '_'
 		if r == ' ' || r == '\n' || r == '\r' || r == '\t' || r == '/' || r == '\\' || r == ':' {
 			return '_'
 		}
-		
+
 		return r
 	}, s)
 }

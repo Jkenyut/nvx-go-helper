@@ -1,6 +1,7 @@
 package format
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -220,4 +221,76 @@ func TestEndOfWeek(t *testing.T) {
 	assert.Equal(t, 59, endWed.Second())
 
 	assert.True(t, EndOfWeek(time.Time{}).IsZero())
+}
+
+func TestStringToDateTime(t *testing.T) {
+	// WIB
+	tWIB, err := StringToDateTimeSecWIB("2025-10-20 15:30:45")
+	assert.NoError(t, err)
+	assert.Equal(t, 2025, tWIB.Year())
+	assert.Equal(t, 15, tWIB.Hour())
+	assert.Equal(t, "Asia/Jakarta", tWIB.Location().String())
+
+	_, err = StringToDateTimeSecWIB("")
+	assert.Error(t, err)
+	_, err = StringToDateTimeSecWIB("invalid")
+	assert.Error(t, err)
+
+	// UTC
+	tUTC, err := StringToDateTimeSecUTC("2025-10-20 15:30:45")
+	assert.NoError(t, err)
+	assert.Equal(t, "UTC", tUTC.Location().String())
+
+	_, err = StringToDateTimeSecUTC("")
+	assert.Error(t, err)
+
+	// Date only
+	dDateWIB, err := StringToDateWIB("2025-10-20")
+	assert.NoError(t, err)
+	assert.Equal(t, 20, dDateWIB.Day())
+
+	_, err = StringToDateWIB("")
+	assert.Error(t, err)
+
+	dDateUTC, err := StringToDateUTC("2025-10-20")
+	assert.NoError(t, err)
+	assert.Equal(t, "UTC", dDateUTC.Location().String())
+
+	_, err = StringToDateUTC("")
+	assert.Error(t, err)
+
+	// OrZero variants
+	assert.False(t, StringToDateTimeSecWIBOrZero("2025-10-20 15:30:45").IsZero())
+	assert.True(t, StringToDateTimeSecWIBOrZero("invalid").IsZero())
+
+	assert.False(t, StringToDateTimeSecUTCOrZero("2025-10-20 15:30:45").IsZero())
+	assert.True(t, StringToDateTimeSecUTCOrZero("invalid").IsZero())
+
+	assert.False(t, StringToDateWIBOrZero("2025-10-20").IsZero())
+	assert.True(t, StringToDateWIBOrZero("invalid").IsZero())
+
+	assert.False(t, StringToDateUTCOrZero("2025-10-20").IsZero())
+	assert.True(t, StringToDateUTCOrZero("invalid").IsZero())
+
+	// StringToUnix
+	tUnix, err := StringToUnix("1633072800")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1633072800), tUnix.Unix())
+
+	_, err = StringToUnix("not-a-number")
+	assert.Error(t, err)
+
+	assert.False(t, StringToUnixOrZero("1633072800").IsZero())
+	assert.True(t, StringToUnixOrZero("not-a-number").IsZero())
+
+	// Time to string
+	sampleTime := time.Date(2025, 10, 20, 15, 30, 45, 0, time.UTC)
+	assert.Equal(t, "2025-10-20 15:30:45", ToDateTimeSecString(sampleTime))
+	assert.Empty(t, ToDateTimeSecString(time.Time{}))
+
+	assert.Equal(t, "2025-10-20", ToDateString(sampleTime))
+	assert.Empty(t, ToDateString(time.Time{}))
+
+	assert.Equal(t, fmt.Sprintf("%d", sampleTime.Unix()), Timestamp(sampleTime))
+	assert.Empty(t, Timestamp(time.Time{}))
 }

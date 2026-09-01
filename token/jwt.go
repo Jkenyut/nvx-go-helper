@@ -1,3 +1,4 @@
+// Package token provides lightweight JWT signing, verification, and token utilities using ECDSA (ES256).
 package token
 
 import (
@@ -15,11 +16,16 @@ import (
 )
 
 var (
+	// ErrInvalidTokenFormat is returned when a JWT does not have three dot-separated segments.
 	ErrInvalidTokenFormat = errors.New("invalid token format")
-	ErrTokenExpired       = errors.New("token has expired")
-	ErrTokenNotValidYet   = errors.New("token is not valid yet")
-	ErrInvalidSignature   = errors.New("invalid token signature")
-	ErrNilKey             = errors.New("cryptographic key cannot be nil")
+	// ErrTokenExpired is returned when the token expiration time is in the past.
+	ErrTokenExpired = errors.New("token has expired")
+	// ErrTokenNotValidYet is returned when the token not-before time is in the future.
+	ErrTokenNotValidYet = errors.New("token is not valid yet")
+	// ErrInvalidSignature is returned when the cryptographic signature verification fails.
+	ErrInvalidSignature = errors.New("invalid token signature")
+	// ErrNilKey is returned when a nil private or public key is provided.
+	ErrNilKey = errors.New("cryptographic key cannot be nil")
 )
 
 // StandardClaims is a type alias for standard RFC 7519 registered claims without custom data payload.
