@@ -13,11 +13,16 @@ func TestDetectColumnType(t *testing.T) {
 	detector := NewTypeDetector().
 		WithColumnOverride("custom_code", TypeInteger).
 		WithBooleanSuffixes("flag").
+		WithFloatSuffixes("markup").
 		WithUUIDSuffixes("id_str")
 
 	assert.Equal(t, TypeBoolean, detector.DetectColumnType("is_active"))
 	assert.Equal(t, TypeBoolean, detector.DetectColumnType("ga_is_active"))
 	assert.Equal(t, TypeBoolean, detector.DetectColumnType("status_flag"))
+	assert.Equal(t, TypeFloat, detector.DetectColumnType("price"))
+	assert.Equal(t, TypeFloat, detector.DetectColumnType("discount_rate"))
+	assert.Equal(t, TypeFloat, detector.DetectColumnType("item_markup"))
+	assert.Equal(t, TypeFloat, detector.DetectColumnType("latitude"))
 	assert.Equal(t, TypeInteger, detector.DetectColumnType("rate_limit_rpm"))
 	assert.Equal(t, TypeInteger, detector.DetectColumnType("custom_code"))
 	assert.Equal(t, TypeTimestamp, detector.DetectColumnType("created_at"))
@@ -49,6 +54,19 @@ func TestNormalizeFilterValue(t *testing.T) {
 		assert.Equal(t, []int{1, 2, 3}, vals)
 
 		_, err = NormalizeFilterValue("version", []string{"invalid"})
+		require.Error(t, err)
+	})
+
+	t.Run("float single and slice", func(t *testing.T) {
+		val, err := NormalizeFilterValue("price", []string{"19.99"})
+		require.NoError(t, err)
+		assert.Equal(t, 19.99, val)
+
+		vals, err := NormalizeFilterValue("price", []string{"10.5", "20.25"})
+		require.NoError(t, err)
+		assert.Equal(t, []float64{10.5, 20.25}, vals)
+
+		_, err = NormalizeFilterValue("price", []string{"invalid_float"})
 		require.Error(t, err)
 	})
 
@@ -97,15 +115,16 @@ func TestNormalizeCursorValues(t *testing.T) {
 	uid := uuid.New()
 	now := time.Now().UTC().Truncate(time.Second)
 
-	cols := []string{"created_at", "id", "version"}
-	rawVals := []any{now.Format(time.RFC3339), uid.String(), float64(10)}
+	cols := []string{"created_at", "id", "price", "version"}
+	rawVals := []any{now.Format(time.RFC3339), uid.String(), "49.95", float64(10)}
 
 	normalized, err := NormalizeCursorValues(cols, rawVals)
 	require.NoError(t, err)
-	assert.Len(t, normalized, 3)
+	assert.Len(t, normalized, 4)
 	assert.Equal(t, now, normalized[0])
 	assert.Equal(t, uid, normalized[1])
-	assert.Equal(t, int64(10), normalized[2])
+	assert.Equal(t, 49.95, normalized[2])
+	assert.Equal(t, int64(10), normalized[3])
 
 	t.Run("length mismatch", func(t *testing.T) {
 		_, err := NormalizeCursorValues([]string{"id"}, []any{1, 2})

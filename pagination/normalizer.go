@@ -27,6 +27,7 @@ type ColumnType int
 const (
 	TypeString ColumnType = iota
 	TypeInteger
+	TypeFloat
 	TypeBoolean
 	TypeUUID
 	TypeTimestamp
@@ -37,6 +38,8 @@ func (c ColumnType) String() string {
 	switch c {
 	case TypeInteger:
 		return "integer"
+	case TypeFloat:
+		return "float"
 	case TypeBoolean:
 		return "boolean"
 	case TypeUUID:
@@ -64,6 +67,7 @@ var defaultTimestampFormats = []string{
 type TypeDetector struct {
 	booleanSuffixes   []string
 	integerSuffixes   []string
+	floatSuffixes     []string
 	timestampSuffixes []string
 	uuidSuffixes      []string
 	overrides         map[string]ColumnType
@@ -78,9 +82,14 @@ func NewTypeDetector() *TypeDetector {
 			"has_access", "can_edit", "status_active",
 		},
 		integerSuffixes: []string{
-			"count", "total", "amount", "quantity", "version", "status",
+			"count", "total_items", "quantity", "version", "status",
 			"role", "order", "sort_order", "level", "rpm", "attempts",
 			"limit", "offset", "type", "failed_login_attempts", "rate_limit_rpm",
+		},
+		floatSuffixes: []string{
+			"price", "rate", "percent", "percentage", "amount_decimal",
+			"fee", "tax", "lat", "latitude", "lng", "longitude",
+			"weight", "discount_rate", "score", "rating", "subtotal", "grand_total",
 		},
 		timestampSuffixes: []string{
 			"created_at", "updated_at", "deleted_at", "expires_at", "revoked_at",
@@ -103,6 +112,7 @@ func (d *TypeDetector) Clone() *TypeDetector {
 	cp := &TypeDetector{
 		booleanSuffixes:   append([]string(nil), d.booleanSuffixes...),
 		integerSuffixes:   append([]string(nil), d.integerSuffixes...),
+		floatSuffixes:     append([]string(nil), d.floatSuffixes...),
 		timestampSuffixes: append([]string(nil), d.timestampSuffixes...),
 		uuidSuffixes:      append([]string(nil), d.uuidSuffixes...),
 		overrides:         make(map[string]ColumnType, len(d.overrides)),
@@ -123,6 +133,12 @@ func (d *TypeDetector) WithBooleanSuffixes(suffixes ...string) *TypeDetector {
 // WithIntegerSuffixes adds custom integer column suffixes.
 func (d *TypeDetector) WithIntegerSuffixes(suffixes ...string) *TypeDetector {
 	d.integerSuffixes = append(d.integerSuffixes, suffixes...)
+	return d
+}
+
+// WithFloatSuffixes adds custom float column suffixes.
+func (d *TypeDetector) WithFloatSuffixes(suffixes ...string) *TypeDetector {
+	d.floatSuffixes = append(d.floatSuffixes, suffixes...)
 	return d
 }
 
@@ -151,7 +167,7 @@ func (d *TypeDetector) WithColumnOverride(column string, colType ColumnType) *Ty
 
 func hasMatch(col string, names []string) bool {
 	for _, name := range names {
-		if col == name || strings.HasSuffix(col, "_"+name) || strings.HasPrefix(col, name+"_") {
+		if col == name || strings.HasSuffix(col, "_"+name) {
 			return true
 		}
 	}
@@ -168,6 +184,8 @@ func (d *TypeDetector) DetectColumnType(col string) ColumnType {
 	switch {
 	case hasMatch(col, d.booleanSuffixes):
 		return TypeBoolean
+	case hasMatch(col, d.floatSuffixes):
+		return TypeFloat
 	case hasMatch(col, d.integerSuffixes):
 		return TypeInteger
 	case hasMatch(col, d.timestampSuffixes):
@@ -227,6 +245,24 @@ func (d *TypeDetector) NormalizeFilterValue(dbCol string, rawVals []string) (any
 		}
 		return nums, nil
 
+	case TypeFloat:
+		if len(rawVals) == 1 {
+			f, err := strconv.ParseFloat(rawVals[0], 64)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects float, got %q", ErrInvalidFilterValue, dbCol, rawVals[0])
+			}
+			return f, nil
+		}
+		floats := make([]float64, 0, len(rawVals))
+		for _, v := range rawVals {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects float in list, got %q", ErrInvalidFilterValue, dbCol, v)
+			}
+			floats = append(floats, f)
+		}
+		return floats, nil
+
 	case TypeUUID:
 		if len(rawVals) == 1 {
 			u, err := uuid.Parse(rawVals[0])
@@ -270,7 +306,7 @@ func NormalizeFilterValue(dbCol string, rawVals []string) (any, error) {
 
 // NormalizeCursorValues validates and converts raw JSON-unmarshaled cursor values into strict,
 // typed values matching database column types (e.g. converting ISO-8601 strings to time.Time,
-// strings to uuid.UUID, float64 to int64).
+// strings to uuid.UUID, float64 to int64, numbers to float64).
 func (d *TypeDetector) NormalizeCursorValues(columns []string, cursorValues []any) ([]any, error) {
 	if len(columns) == 0 || len(cursorValues) == 0 {
 		return nil, nil
@@ -347,6 +383,26 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 			return num, nil
 		default:
 			return nil, fmt.Errorf("%w: column %s expects integer cursor, got %T", ErrInvalidCursorValue, col, val)
+		}
+
+	case TypeFloat:
+		switch v := val.(type) {
+		case float64:
+			return v, nil
+		case float32:
+			return float64(v), nil
+		case int:
+			return float64(v), nil
+		case int64:
+			return float64(v), nil
+		case string:
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects float cursor, got %q", ErrInvalidCursorValue, col, v)
+			}
+			return f, nil
+		default:
+			return nil, fmt.Errorf("%w: column %s expects float cursor, got %T", ErrInvalidCursorValue, col, val)
 		}
 
 	case TypeBoolean:
