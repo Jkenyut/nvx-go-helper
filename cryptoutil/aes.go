@@ -91,8 +91,9 @@ func (c *AESGCM) Encrypt(data any) (string, error) {
 	}
 
 	// Create a random nonce (Number Used Once)
-	// GCM standard requires a 12-byte nonce
-	nonce := make([]byte, 12)
+	// GCM standard requires a 12-byte nonce. Pre-allocate capacity for nonce + ciphertext + tag
+	// so Seal appends without heap reallocation.
+	nonce := make([]byte, 12, 12+len(plaintext)+c.aead.Overhead())
 	// Read cryptographically secure random bytes into the nonce
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", fmt.Errorf("nonce generation failed: %w", err)

@@ -3,8 +3,8 @@
 //
 // Features (enterprise standard):
 //   - Cursor-based & offset-based support
-//   - Automatic limit clamping (max 100)
-//   - Safe defaults (page=1, limit=10)
+//   - Non-opinionated limit handling (no forced default limit)
+//   - Safe page defaults (page=1)
 //   - Helper methods: Offset, HasNext, Links (RFC 5988)
 //   - Immutable design when possible
 //   - Zero dependencies
@@ -37,10 +37,7 @@ import (
 
 // Default values for pagination
 const (
-	DefaultPage  = 1      // Default to first page
-	DefaultLimit = 10     // Default 10 items per page
-	MaxLimit     = 100000 // Protection against large queries
-	MinLimit     = 1      // Minimum 1 item per page
+	DefaultPage = 1 // Default to first page
 )
 
 // Pagination represents offset-based pagination metadata.
@@ -69,22 +66,19 @@ type Pagination struct {
 func New(pageStr, limitStr string, total int) Pagination {
 	// Parse strings to integers with defaults
 	page := parseInt(pageStr, DefaultPage)
-	limit := parseInt(limitStr, DefaultLimit)
+	limit := parseInt(limitStr, 0)
 	return NewFromInt(page, limit, total)
 }
 
 // NewFromInt creates a new Pagination from integer parameters.
-// Automatically sanitizes and applies safe defaults.
+// Automatically sanitizes and applies safe defaults without forcing an arbitrary limit.
 func NewFromInt(page, limit, total int) Pagination {
 	// Sanitize Inputs
 	if page < 1 {
 		page = DefaultPage
 	}
-	if limit < MinLimit {
-		limit = DefaultLimit
-	}
-	if limit > MaxLimit {
-		limit = MaxLimit
+	if limit < 0 {
+		limit = 0
 	}
 
 	p := Pagination{
@@ -101,7 +95,7 @@ func NewFromInt(page, limit, total int) Pagination {
 		p.Page = p.TotalPages
 	}
 
-	p.HasNext = p.Page < p.TotalPages
+	p.HasNext = p.TotalPages > 0 && p.Page < p.TotalPages
 	p.HasPrev = p.Page > 1
 	p.NextPage = p.Page + 1
 	p.PrevPage = p.Page - 1
@@ -133,13 +127,14 @@ type OffsetRequest struct {
 }
 
 // BindOffsetRequest extracts standard offset pagination parameters from an HTTP request.
-// It uses safe default values if the parameters are not provided in the query string.
+// BindOffsetRequest extracts standard offset pagination parameters from an HTTP request.
+// If limit is not specified in the query, it defaults to 0 (no limit forced by helper).
 func BindOffsetRequest(r *http.Request) OffsetRequest {
 	return OffsetRequest{
 		SortBy:         request.GetQueryString(r, "sort_by", ""),
 		SortType:       request.GetQueryString(r, "sort_type", ""),
 		Page:           request.GetQueryInt(r, "page", DefaultPage),
-		Limit:          request.GetQueryInt(r, "limit", DefaultLimit),
+		Limit:          request.GetQueryInt(r, "limit", 0),
 		ShowPagination: request.GetQueryBool(r, "show_pagination", true),
 	}
 }
@@ -147,13 +142,16 @@ func BindOffsetRequest(r *http.Request) OffsetRequest {
 // Offset returns SQL OFFSET value (0-based)
 // Formula: (page - 1) * limit
 func (p Pagination) Offset() int {
+	if p.Limit <= 0 {
+		return 0
+	}
 	return (p.Page - 1) * p.Limit
 }
 
 // calculateTotalPages computes ceil(total / limit)
 func (p Pagination) calculateTotalPages() int {
 	// Prevent division by zero
-	if p.Limit == 0 {
+	if p.Limit <= 0 {
 		return 0
 	}
 	// Use integer arithmetic to calculate total pages (ceil)
@@ -209,16 +207,11 @@ type CursorPagination struct {
 	HasNext    bool   `json:"has_next"`              // Whether there is a next page
 }
 
-// NewCursor creates a new CursorPagination.
-// Limit is sanitized similarly to offset pagination.
+// NewCursor creates a new CursorPagination without forcing an arbitrary default limit.
 func NewCursor(limitStr string, nextCursor string, prevCursor string, hasNext bool) CursorPagination {
-	limit := parseInt(limitStr, DefaultLimit)
-
-	if limit < MinLimit {
-		limit = DefaultLimit
-	}
-	if limit > MaxLimit {
-		limit = MaxLimit
+	limit := parseInt(limitStr, 0)
+	if limit < 0 {
+		limit = 0
 	}
 
 	return CursorPagination{

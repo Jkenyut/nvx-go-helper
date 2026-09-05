@@ -105,13 +105,13 @@ func GetUserIPOrigin(ctx context.Context) (string, bool) {
 // WithCustomFields adds any key-value pair to the context using a typed key
 // to prevent collisions with other packages.
 // Use specific functions above when possible for standard fields.
-func WithCustomFields(ctx context.Context, k string, value interface{}) context.Context {
+func WithCustomFields(ctx context.Context, k string, value any) context.Context {
 	return context.WithValue(ctx, customKey(k), value)
 }
 
 // GetCustomField retrieves a custom field value from the context.
 // The key must match the one used in WithCustomFields.
-func GetCustomField(ctx context.Context, k string) (interface{}, bool) {
+func GetCustomField(ctx context.Context, k string) (any, bool) {
 	v := ctx.Value(customKey(k))
 	if v == nil {
 		return nil, false
@@ -121,8 +121,8 @@ func GetCustomField(ctx context.Context, k string) (interface{}, bool) {
 
 // GetAllFieldsFromContext collects all standard activity fields into a map.
 // Useful for structured logging setup (e.g. Logrus/Zap fields).
-func GetAllFieldsFromContext(ctx context.Context) map[string]interface{} {
-	fields := make(map[string]interface{})
+func GetAllFieldsFromContext(ctx context.Context) map[string]any {
+	fields := make(map[string]any, 6)
 
 	// Add transaction_id if present
 	if id, ok := GetTransactionID(ctx); ok {

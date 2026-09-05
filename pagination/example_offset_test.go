@@ -21,7 +21,7 @@ func Example_offsetPagination() {
 	// 2. INSIDE THE HANDLER:
 	// =====================================================================
 	req := &http.Request{} // Simulated HTTP Request
-	
+
 	// Automatically extract all query parameters (page, limit, sort_by, sort_type, etc.)
 	dto := ProductGetRequest{
 		Search:        request.GetQueryString(req, "search", ""),
@@ -52,11 +52,11 @@ func Example_offsetPagination() {
 	// =====================================================================
 	// 4. INSIDE THE SERVICE / RESPONSE:
 	// =====================================================================
-	
+
 	// You can easily format this metadata into your JSON response
 	fmt.Printf("Total Pages: %d\n", pageData.TotalPages)
 	fmt.Printf("Has Next: %v\n", pageData.HasNext)
-	
+
 	// If you want to include standard RFC 5988 HTTP Link headers in your response
 	// you can build it easily:
 	baseURL := "https://api.example.com/products"

@@ -398,6 +398,9 @@ func TestTruncate(t *testing.T) {
 		{"Hello", 3, "..."},
 		{"Hello", 2, "Hello"}, // maxLen < 3 returns original
 		{"", 10, ""},
+		{"Halo 👋 Dunia", 8, "Halo ..."},
+		{"Rupiah 💰 Promo", 10, "Rupiah ..."},
+		{"Café au lait", 7, "Café..."},
 	}
 
 	for _, tt := range tests {

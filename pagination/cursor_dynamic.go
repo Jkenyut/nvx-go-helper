@@ -14,7 +14,7 @@ import (
 // EncodeDynamicCursor takes arbitrary values (e.g., from the last row of a query)
 // and encodes them into a base64 JSON array string to be used as a cursor.
 // It uses URLEncoding to be safe for HTTP query parameters.
-func EncodeDynamicCursor(values ...interface{}) (string, error) {
+func EncodeDynamicCursor(values ...any) (string, error) {
 	if len(values) == 0 {
 		return "", nil
 	}
@@ -26,7 +26,7 @@ func EncodeDynamicCursor(values ...interface{}) (string, error) {
 }
 
 // DecodeDynamicCursor decodes a base64 JSON array string back into an array of values.
-func DecodeDynamicCursor(cursor string) ([]interface{}, error) {
+func DecodeDynamicCursor(cursor string) ([]any, error) {
 	if cursor == "" {
 		return nil, nil
 	}
@@ -41,7 +41,7 @@ func DecodeDynamicCursor(cursor string) ([]interface{}, error) {
 		}
 	}
 
-	var values []interface{}
+	var values []any
 	if err := sonic.Unmarshal(b, &values); err != nil {
 		return nil, fmt.Errorf("failed to decode cursor values: %w", err)
 	}
@@ -55,14 +55,14 @@ func DecodeDynamicCursor(cursor string) ([]interface{}, error) {
 // Example for columns=["name", "status"], operators=[">", "<"], values=["App A", 1]:
 // Returns SQL: "(name > ?) OR (name = ? AND status < ?)"
 // Returns Args: ["App A", "App A", 1]
-func BuildDynamicKeyset(columns []string, operators []string, values []interface{}) (string, []interface{}) {
+func BuildDynamicKeyset(columns []string, operators []string, values []any) (string, []any) {
 	n := min(len(columns), len(operators), len(values))
 	if n == 0 {
 		return "", nil
 	}
 
 	var orClauses []string
-	var finalArgs []interface{}
+	var finalArgs []any
 
 	for i := 0; i < n; i++ {
 		var andClauses []string
@@ -120,8 +120,8 @@ func InvertSort(operators, orderStrs []string) ([]string, []string) {
 //   - limit: the limit specified in the request
 //   - direction: "next" or "prev"
 //   - currentCursor: the cursor passed in the request
-//   - extractFn: a callback to extract []interface{} keyset values from a single item
-func GenerateBidirectionalCursor[T any](items []T, limit int, direction, currentCursor string, extractFn func(T) []interface{}) *CursorPagination {
+//   - extractFn: a callback to extract []any keyset values from a single item
+func GenerateBidirectionalCursor[T any](items []T, limit int, direction, currentCursor string, extractFn func(T) []any) *CursorPagination {
 	var nextCursor, prevCursor string
 	hasNext := false
 
@@ -130,7 +130,7 @@ func GenerateBidirectionalCursor[T any](items []T, limit int, direction, current
 		if direction == "next" && currentCursor == "" {
 			showPrev = false
 		}
-		if direction == "prev" && len(items) < limit {
+		if direction == "prev" && limit > 0 && len(items) < limit {
 			showPrev = false
 		}
 
@@ -140,7 +140,7 @@ func GenerateBidirectionalCursor[T any](items []T, limit int, direction, current
 		}
 
 		if direction == "next" {
-			hasNext = len(items) == limit
+			hasNext = limit > 0 && len(items) == limit
 		} else {
 			hasNext = true
 		}
@@ -277,7 +277,7 @@ func BindDynamicCursorRequest(r *http.Request) DynamicCursorRequest {
 		SortType:       request.GetQueryString(r, "sort_type", ""),
 		Cursor:         request.GetQueryString(r, "cursor", ""),
 		Direction:      request.GetQueryString(r, "direction", "next"),
-		Limit:          request.GetQueryInt(r, "limit", 10),
+		Limit:          request.GetQueryInt(r, "limit", 0),
 		ShowPagination: request.GetQueryBool(r, "show_pagination", true),
 	}
 }

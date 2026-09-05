@@ -4,6 +4,8 @@
 // Zero external dependencies.
 package sliceutil
 
+import "slices"
+
 // Chunk splits a single slice into multiple smaller slices, each of a specified maximum size.
 // If the input slice is empty, it returns an empty slice of slices.
 // If size is <= 0, it panics as a zero or negative chunk size is invalid.
@@ -102,12 +104,7 @@ func Unique[T comparable](slice []T) []T {
 
 // Contains returns true if the specified element exists in the slice.
 func Contains[T comparable](slice []T, elem T) bool {
-	for i := range slice {
-		if slice[i] == elem {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, elem)
 }
 
 // Find returns the first element that satisfies the condition f, and true.
@@ -254,7 +251,11 @@ func MapValues[K comparable, V any](m map[K]V) []V {
 // MapMerge merges multiple maps into a new map.
 // If there are duplicate keys, the value from the map provided later in the arguments will overwrite earlier ones.
 func MapMerge[K comparable, V any](maps ...map[K]V) map[K]V {
-	result := make(map[K]V)
+	totalLen := 0
+	for _, m := range maps {
+		totalLen += len(m)
+	}
+	result := make(map[K]V, totalLen)
 	for _, m := range maps {
 		for k, v := range m {
 			result[k] = v
@@ -322,12 +323,7 @@ func FlatMap[T, U any](slice []T, fn func(T) []U) []U {
 //	IndexOf([]string{"a", "b", "c"}, "b") // 1
 //	IndexOf([]string{"a", "b", "c"}, "x") // -1
 func IndexOf[T comparable](slice []T, elem T) int {
-	for i := range slice {
-		if slice[i] == elem {
-			return i
-		}
-	}
-	return -1
+	return slices.Index(slice, elem)
 }
 
 // Last returns the last element of the slice and true, or zero value and false if the slice is empty.

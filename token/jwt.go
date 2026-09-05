@@ -102,6 +102,16 @@ func VerifyES256JWT[T any](pubKey *ecdsa.PublicKey, tokenString string) (*JWTCla
 		return nil, ErrInvalidTokenFormat
 	}
 
+	// Verify algorithm specified in the header is strictly ES256
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, ErrInvalidTokenFormat
+	}
+	var header jwtHeader
+	if err := sonic.Unmarshal(headerBytes, &header); err != nil || header.Alg != "ES256" {
+		return nil, ErrInvalidSignature
+	}
+
 	signingInput := parts[0] + "." + parts[1]
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil || len(sig) != 64 {

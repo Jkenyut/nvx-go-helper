@@ -368,6 +368,7 @@ func MaskPhone(phone string) string {
 }
 
 // Truncate truncates a string to maxLen characters and appends "..." if truncated.
+// It handles multi-byte UTF-8 characters safely without corrupting code points.
 // If the string is shorter than or equal to maxLen, it is returned unchanged.
 // maxLen must be >= 3 (to fit the ellipsis); otherwise returns original string.
 //
@@ -376,10 +377,14 @@ func MaskPhone(phone string) string {
 //	Truncate("Hello, World!", 10) // "Hello, ..."
 //	Truncate("Hi", 10)           // "Hi"
 func Truncate(s string, maxLen int) string {
-	if maxLen < 3 || len(s) <= maxLen {
+	if maxLen < 3 {
 		return s
 	}
-	return s[:maxLen-3] + "..."
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen-3]) + "..."
 }
 
 // PadLeft pads a string on the left side to reach the desired length.
@@ -465,23 +470,30 @@ func MaskAfterKeywords(text string, keywords []string, maskChar string) string {
 	}
 
 	return re.ReplaceAllStringFunc(text, func(match string) string {
-		parts := re.FindStringSubmatch(match)
 		idx := re.FindStringSubmatchIndex(match)
+		if len(idx) < 14 {
+			return match
+		}
 
-		kw := parts[1]  // Keyword
-		sep := parts[2] // Separator
+		kw := match[idx[2]:idx[3]]  // Keyword
+		sep := match[idx[4]:idx[5]] // Separator
 
-		// Use submatch indices (not empty-string check) to detect which group matched.
-		// parts[n] != "" fails for empty quoted values like ""; idx[n*2] >= 0 is correct.
+		// Use submatch indices to detect which value group matched and slice directly
 		switch {
 		case idx[6] >= 0: // Double-quoted (JSON / standard string) — group 3
-			return kw + sep + `"` + strings.Repeat(maskChar, len(parts[3])) + `"`
+			valLen := idx[7] - idx[6]
+			return kw + sep + `"` + strings.Repeat(maskChar, valLen) + `"`
 		case idx[8] >= 0: // Single-quoted — group 4
-			return kw + sep + `'` + strings.Repeat(maskChar, len(parts[4])) + `'`
+			valLen := idx[9] - idx[8]
+			return kw + sep + `'` + strings.Repeat(maskChar, valLen) + `'`
 		case idx[10] >= 0: // Backtick-quoted — group 5
-			return kw + sep + "`" + strings.Repeat(maskChar, len(parts[5])) + "`"
-		default: // Unquoted (plain text, JSON number/boolean, etc) — group 6
-			return kw + sep + strings.Repeat(maskChar, len(parts[6]))
+			valLen := idx[11] - idx[10]
+			return kw + sep + "`" + strings.Repeat(maskChar, valLen) + "`"
+		case idx[12] >= 0: // Unquoted (plain text, JSON number/boolean, etc) — group 6
+			valLen := idx[13] - idx[12]
+			return kw + sep + strings.Repeat(maskChar, valLen)
+		default:
+			return match
 		}
 	})
 }

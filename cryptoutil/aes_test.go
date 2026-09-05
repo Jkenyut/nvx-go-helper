@@ -52,7 +52,7 @@ func TestGenerateAESKeyAndNewFromHex(t *testing.T) {
 	// 1. Generate key
 	hexKey, err := GenerateAESKey()
 	assert.NoError(t, err)
-	
+
 	// Hex string of 32 bytes should be 64 characters long
 	assert.Len(t, hexKey, 64)
 

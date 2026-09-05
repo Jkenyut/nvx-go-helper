@@ -19,6 +19,12 @@ func TestSanitizeFileName(t *testing.T) {
 		{"With spaces", "my image.jpg", "myimage.jpg"},
 		{"Valid symbols", "my_file-v1.0.tar.gz", "my_file-v1.0.tar.gz"},
 		{"Nested path", "/var/log/app.log", "app.log"},
+		{"Double dot alone", "..", "unnamed_file"},
+		{"Single dot alone", ".", "unnamed_file"},
+		{"Multiple dots", "...", "unnamed_file"},
+		{"Windows backslash traversal", `..\..\..\etc\passwd`, "passwd"},
+		{"Leading dot hidden file", ".env", "env"},
+		{"Dot slash traversal", "./././config.yml", "config.yml"},
 	}
 
 	for _, tt := range tests {
@@ -68,6 +74,44 @@ func TestIsSafeDocument(t *testing.T) {
 	// PDF header
 	pdfData := []byte("%PDF-1.4 some content here")
 	assert.True(t, IsSafeDocument(pdfData))
+
+	// Plain text (with charset)
+	textData := []byte("This is plain text document.")
+	assert.True(t, IsSafeDocument(textData))
+
+	// Legacy Office OLE (CFBF) header (.doc, .xls, .ppt)
+	oleHeader := []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0x00}
+	assert.True(t, IsSafeDocument(oleHeader))
+
+	// Modern OOXML (.docx) zip header containing [Content_Types].xml
+	docxHeader := []byte{
+		0x50, 0x4B, 0x03, 0x04, // zip magic
+		0x14, 0x00, 0x00, 0x00, // version, flags
+		0x08, 0x00, 0x00, 0x00, // compression
+		0x00, 0x00, 0x00, 0x00, // mod time, date
+		0x00, 0x00, 0x00, 0x00, // crc-32
+		0x00, 0x00, 0x00, 0x00, // compressed size
+		0x00, 0x00, 0x00, 0x00, // uncompressed size
+		0x13, 0x00, // filename length (19)
+		0x00, 0x00, // extra field length
+	}
+	docxHeader = append(docxHeader, []byte("[Content_Types].xml")...)
+	assert.True(t, IsSafeDocument(docxHeader))
+
+	// Plain zip (not an office document)
+	genericZip := []byte{
+		0x50, 0x4B, 0x03, 0x04,
+		0x14, 0x00, 0x00, 0x00,
+		0x08, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x08, 0x00,
+		0x00, 0x00,
+	}
+	genericZip = append(genericZip, []byte("test.txt")...)
+	assert.False(t, IsSafeDocument(genericZip))
 
 	// HTML should NOT be a safe document
 	htmlData := []byte("<html><body>Hello</body></html>")

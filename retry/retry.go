@@ -158,60 +158,9 @@ func calculateDelay(delay time.Duration, cfg *config) time.Duration {
 // Do executes the given action. If the action returns an error, it will retry
 // according to the provided options.
 func Do(action func() error, opts ...Option) error {
-	cfg := newConfig(opts...)
-
-	var err error
-	delay := cfg.delay
-
-	for attempt := 1; attempt <= cfg.maxAttempts; attempt++ {
-		// Check context before attempting
-		if errCtx := cfg.ctx.Err(); errCtx != nil {
-			return errCtx
-		}
-
-		err = action()
-		if err == nil {
-			return nil
-		}
-
-		// If the error shouldn't be retried, return immediately
-		if !cfg.retryIf(err) {
-			return err
-		}
-
-		// Don't wait if this was the last attempt
-		if attempt == cfg.maxAttempts {
-			break
-		}
-
-		// Call onRetry callback if configured
-		if cfg.onRetry != nil {
-			cfg.onRetry(attempt, err)
-		}
-
-		// Wait for the delay or context cancellation
-		if delay > 0 {
-			waitDuration := calculateDelay(delay, cfg)
-			select {
-			case <-time.After(waitDuration):
-			case <-cfg.ctx.Done():
-				return cfg.ctx.Err()
-			}
-
-			// Apply backoff multiplier for next attempt
-			if cfg.multiplier > 1.0 {
-				delay = time.Duration(float64(delay) * cfg.multiplier)
-			}
-		} else {
-			// If no delay, just check context
-			select {
-			case <-cfg.ctx.Done():
-				return cfg.ctx.Err()
-			default:
-			}
-		}
-	}
-
+	_, err := DoWithResult(func() (struct{}, error) {
+		return struct{}{}, action()
+	}, opts...)
 	return err
 }
 
@@ -257,14 +206,17 @@ func DoWithResult[T any](action func() (T, error), opts ...Option) (T, error) {
 			cfg.onRetry(attempt, err)
 		}
 
-		// Wait for the delay or context cancellation
+		// Wait for the delay or context cancellation with proper timer cleanup
 		if delay > 0 {
 			waitDuration := calculateDelay(delay, cfg)
+			timer := time.NewTimer(waitDuration)
 			select {
-			case <-time.After(waitDuration):
+			case <-timer.C:
 			case <-cfg.ctx.Done():
+				timer.Stop()
 				return result, cfg.ctx.Err()
 			}
+			timer.Stop()
 
 			// Apply backoff multiplier for next attempt
 			if cfg.multiplier > 1.0 {

@@ -137,16 +137,11 @@ func stringWithCharset(length int, charset string) string {
 //	}
 //	fmt.Println(key)  // "Q3J5cHRvR3JhcGhpY2FsbHlTZWN1cmVLZXk="
 func GenerateKey(length uint32) (string, error) {
-	if length == 0 {
-		return "", fmt.Errorf("key length must be positive, got %d", length)
+	raw, err := GenerateKeyRaw(length)
+	if err != nil {
+		return "", err
 	}
-
-	key := make([]byte, length)
-	if _, err := rand.Read(key); err != nil {
-		return "", fmt.Errorf("generate random key: %w", err)
-	}
-
-	return base64.StdEncoding.EncodeToString(key), nil
+	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
 // GenerateKeyHex generates a cryptographically secure random key in hex format.
@@ -164,16 +159,11 @@ func GenerateKey(length uint32) (string, error) {
 //	}
 //	fmt.Println(key)  // "a1b2c3d4e5f6..."
 func GenerateKeyHex(length uint32) (string, error) {
-	if length == 0 {
-		return "", fmt.Errorf("key length must be positive, got %d", length)
+	raw, err := GenerateKeyRaw(length)
+	if err != nil {
+		return "", err
 	}
-
-	key := make([]byte, length)
-	if _, err := rand.Read(key); err != nil {
-		return "", fmt.Errorf("generate random key: %w", err)
-	}
-
-	return hex.EncodeToString(key), nil
+	return hex.EncodeToString(raw), nil
 }
 
 // GenerateKeyRaw generates a cryptographically secure random key as raw bytes.

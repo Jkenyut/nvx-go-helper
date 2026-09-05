@@ -145,9 +145,18 @@ func TestGetHeader(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "custom-value", val)
 
+	// Canonical case-insensitive lookup
+	valLower, okLower := GetHeader(req, "x-custom-header")
+	assert.True(t, okLower)
+	assert.Equal(t, "custom-value", valLower)
+
 	val, ok = GetHeader(req, "Non-Existent")
 	assert.False(t, ok)
 	assert.Empty(t, val)
+
+	valNil, okNil := GetHeader(nil, "X-Header")
+	assert.False(t, okNil)
+	assert.Empty(t, valNil)
 }
 
 func TestGetBasicAuthUsernamePassword(t *testing.T) {
@@ -170,8 +179,34 @@ func TestGetClientIP_EdgeCases(t *testing.T) {
 	req.Header.Set("True-Client-IP", "203.0.113.195")
 	assert.Equal(t, "203.0.113.195", GetClientIP(req))
 
+	// IPv6 with port
+	reqIPv6 := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	reqIPv6.RemoteAddr = "[::1]:8080"
+	assert.Equal(t, "::1", GetClientIP(reqIPv6))
+
+	// IPv6 without port
+	reqIPv6NoPort := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	reqIPv6NoPort.RemoteAddr = "2001:db8::1"
+	assert.Equal(t, "2001:db8::1", GetClientIP(reqIPv6NoPort))
+
 	// Invalid remote addr and no headers
 	reqInvalid := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	reqInvalid.RemoteAddr = "invalid-ip-string"
 	assert.Empty(t, GetClientIP(reqInvalid))
+}
+
+func TestGetQueryString_DoesNotDrainBody(t *testing.T) {
+	body := bytes.NewBufferString(`{"name":"budi","age":25}`)
+	req := httptest.NewRequest(http.MethodPost, "/?filter=active", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Read query string first
+	queryVal := GetQueryString(req, "filter", "")
+	assert.Equal(t, "active", queryVal)
+
+	// Body should NOT be drained; BindJSON must succeed
+	var payload dummyPayload
+	err := BindJSON(req, &payload)
+	assert.NoError(t, err)
+	assert.Equal(t, "budi", payload.Name)
 }

@@ -101,15 +101,12 @@ func EncryptECC(recipientPubKey *ecdsa.PublicKey, data []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// 7. Encrypt data
-	ciphertext := aesgcm.Seal(nil, nonce, data, nil)
-
-	// 8. Pack result: [EphemeralPubKey (65 bytes for P-256)] + [Nonce (12 bytes)] + [Ciphertext]
+	// 7. Pack result: [EphemeralPubKey (65 bytes for P-256)] + [Nonce (12 bytes)] + [Ciphertext + Tag]
 	pubBytes := ephemeralPub.Bytes()
-	result := make([]byte, 0, len(pubBytes)+len(nonce)+len(ciphertext))
+	result := make([]byte, 0, len(pubBytes)+len(nonce)+len(data)+aesgcm.Overhead())
 	result = append(result, pubBytes...)
 	result = append(result, nonce...)
-	result = append(result, ciphertext...)
+	result = aesgcm.Seal(result, nonce, data, nil)
 
 	return result, nil
 }

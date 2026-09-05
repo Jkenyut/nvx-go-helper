@@ -5,6 +5,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,7 +114,16 @@ func TestES256JWT_GenericClaims(t *testing.T) {
 		t.Errorf("expected ErrInvalidSignature, got %v", err)
 	}
 
-	// 6. Nil key safety checks
+	// 6. Algorithm confusion attack test (header with alg: none or RS256)
+	fakeHeaderB64 := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"
+	parts := strings.Split(tokenStr, ".")
+	tamperedAlgToken := fakeHeaderB64 + "." + parts[1] + "." + parts[2]
+	_, err = VerifyES256JWT[AppUserData](pubKey, tamperedAlgToken)
+	if !errors.Is(err, ErrInvalidSignature) {
+		t.Errorf("expected ErrInvalidSignature for non-ES256 token, got %v", err)
+	}
+
+	// 7. Nil key safety checks
 	_, err = GenerateES256JWT[AppUserData](nil, claims)
 	if !errors.Is(err, ErrNilKey) {
 		t.Errorf("expected ErrNilKey for nil private key, got %v", err)

@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 )
 
 // Signature creates a secure HMAC-SHA256 signature for the given data using a secret key.
@@ -13,10 +14,10 @@ func Signature(secret string, data ...string) string {
 	// hmac.New ensures that the key is handled correctly (padding, hashing if too long)
 	h := hmac.New(sha256.New, []byte(secret))
 
-	// Write each data part to the HMAC hasher
+	// Write each data part to the HMAC hasher using io.WriteString (zero heap allocation)
 	// Order matters! Signature(a, b) != Signature(b, a)
 	for _, v := range data {
-		h.Write([]byte(v))
+		_, _ = io.WriteString(h, v)
 	}
 
 	// Calculate the final hash (Sum) and return it as a Hex string

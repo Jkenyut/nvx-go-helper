@@ -2,10 +2,12 @@
 package fileutil
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // sanitizeRegex removes characters that are not alphanumeric, dot, dash, or underscore.
@@ -14,8 +16,12 @@ var sanitizeRegex = regexp.MustCompile(`[^a-zA-Z0-9.\-_]`)
 // SanitizeFileName removes invalid or dangerous characters from a filename.
 // It uses filepath.Base to prevent path traversal attacks (e.g., ../../../etc/passwd).
 func SanitizeFileName(name string) string {
-	base := filepath.Base(name)
+	// Normalize Windows backslashes to forward slashes across all platforms
+	cleaned := strings.ReplaceAll(name, "\\", "/")
+	base := filepath.Base(cleaned)
 	sanitized := sanitizeRegex.ReplaceAllString(base, "")
+	// Strip leading dots to prevent directory traversal or hidden files (.env, .htaccess)
+	sanitized = strings.TrimLeft(sanitized, ".")
 	if sanitized == "" {
 		return "unnamed_file"
 	}
@@ -31,7 +37,9 @@ func GetMimeType(data []byte) string {
 
 // IsSafeImage checks if the data represents a valid and safe image format (PNG, JPEG, GIF, WebP).
 func IsSafeImage(data []byte) bool {
-	switch GetMimeType(data) {
+	rawMime := GetMimeType(data)
+	mime, _, _ := strings.Cut(rawMime, ";")
+	switch strings.TrimSpace(mime) {
 	case "image/jpeg", "image/png", "image/gif", "image/webp", "image/jpg":
 		return true
 	default:
@@ -39,10 +47,24 @@ func IsSafeImage(data []byte) bool {
 	}
 }
 
-// IsSafeDocument checks if the data represents a valid document format (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX).
-// Uses magic bytes detection via http.DetectContentType.
+// IsSafeDocument checks if the data represents a valid document format (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, CSV, RTF).
+// Uses magic bytes detection via http.DetectContentType, stripping media type parameters (e.g. charset).
 func IsSafeDocument(data []byte) bool {
-	switch GetMimeType(data) {
+	// Check legacy Microsoft Office OLE Compound Document (CFBF) magic bytes: \xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1
+	if bytes.HasPrefix(data, []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}) {
+		return true
+	}
+
+	// Check modern Microsoft Office OpenXML (DOCX, XLSX, PPTX) which starts with PK\x03\x04
+	if isZipBasedOfficeDocument(data) {
+		return true
+	}
+
+	rawMime := GetMimeType(data)
+	mime, _, _ := strings.Cut(rawMime, ";")
+	mime = strings.TrimSpace(mime)
+
+	switch mime {
 	case "application/pdf",
 		"application/msword",
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -57,6 +79,17 @@ func IsSafeDocument(data []byte) bool {
 	default:
 		return false
 	}
+}
+
+// isZipBasedOfficeDocument inspects zip headers for Microsoft Office OpenXML signatures.
+func isZipBasedOfficeDocument(data []byte) bool {
+	if len(data) < 30 || !bytes.HasPrefix(data, []byte{0x50, 0x4b, 0x03, 0x04}) {
+		return false
+	}
+	return bytes.Contains(data, []byte("[Content_Types].xml")) ||
+		bytes.Contains(data, []byte("word/")) ||
+		bytes.Contains(data, []byte("xl/")) ||
+		bytes.Contains(data, []byte("ppt/"))
 }
 
 // IsSafeVideo checks if the data represents a valid video format (MP4, WebM, OGG, MOV).

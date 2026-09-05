@@ -39,7 +39,11 @@ func Values[K comparable, V any](m map[K]V) []V {
 //
 //	Merge(map[string]int{"a": 1}, map[string]int{"b": 2, "a": 3}) // map[string]int{"a": 3, "b": 2}
 func Merge[K comparable, V any](maps ...map[K]V) map[K]V {
-	result := make(map[K]V)
+	totalLen := 0
+	for _, m := range maps {
+		totalLen += len(m)
+	}
+	result := make(map[K]V, totalLen)
 	for _, m := range maps {
 		for k, v := range m {
 			result[k] = v

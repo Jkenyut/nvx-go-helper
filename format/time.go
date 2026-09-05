@@ -234,7 +234,7 @@ func Timestamp(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return fmt.Sprintf("%d", t.Unix())
+	return strconv.FormatInt(t.Unix(), 10)
 }
 
 // =============================================================================

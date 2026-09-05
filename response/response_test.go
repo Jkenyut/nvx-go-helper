@@ -3,6 +3,7 @@ package response
 import (
 	"bytes"
 	"context"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Jkenyut/nvx-go-helper/activity"
@@ -210,4 +211,23 @@ func TestResponse_JSONEncoder(t *testing.T) {
 		assert.Contains(t, jsonStr, `"status_code":500`)
 		assert.Contains(t, jsonStr, "internal server error: failed to encode response data")
 	})
+}
+
+func TestResponse_WriteHTTP(t *testing.T) {
+	ctx := activity.WithRequestID(context.Background(), "test-write-http-123")
+	rec := httptest.NewRecorder()
+
+	resp := Created(ctx, "user created", map[string]string{"name": "Budi"})
+	resp.WriteHTTP(rec)
+
+	assert.Equal(t, 201, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+	var result Response
+	err := sonic.Unmarshal(rec.Body.Bytes(), &result)
+	assert.NoError(t, err)
+	assert.True(t, result.Meta.Success)
+	assert.Equal(t, 201, result.Meta.StatusCode)
+	assert.Equal(t, "test-write-http-123", result.Meta.RequestID)
+	assert.Equal(t, "user created", result.Meta.Message)
 }

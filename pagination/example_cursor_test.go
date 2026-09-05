@@ -101,7 +101,7 @@ func Example_dynamicCursor() {
 			// You only need to define how to extract values from the struct.
 			// The order MUST EXACTLY MATCH the sort configuration.
 			var vals []interface{}
-			
+
 			sortBys := strings.Split(dto.SortBy, ",")
 			for _, col := range sortBys {
 				col = strings.ToLower(strings.TrimSpace(col))
@@ -112,7 +112,7 @@ func Example_dynamicCursor() {
 					vals = append(vals, u.CreatedAt)
 				}
 			}
-			
+
 			vals = append(vals, u.ID) // UniqueColumn (tie-breaker) must be placed at the end
 			return vals
 		},

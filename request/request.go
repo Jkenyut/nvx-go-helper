@@ -25,9 +25,7 @@ func BindJSON(r *http.Request, dest any) error {
 		_ = r.Body.Close()
 	}()
 
-	// Use sonic's streaming decoder
 	decoder := sonic.ConfigDefault.NewDecoder(r.Body)
-
 	if err := decoder.Decode(dest); err != nil {
 		return err
 	}
@@ -44,9 +42,17 @@ func BindAndValidate(r *http.Request, dest any) error {
 	return validator.Struct(dest)
 }
 
+func getQueryValue(r *http.Request, key string) string {
+	if r == nil || r.URL == nil {
+		return ""
+	}
+	return r.URL.Query().Get(key)
+}
+
 // GetQueryString retrieves a query parameter as a string, returning defaultValue if it's empty.
+// It reads directly from URL query parameters without consuming or parsing request body.
 func GetQueryString(r *http.Request, key string, defaultValue string) string {
-	val := r.FormValue(key)
+	val := getQueryValue(r, key)
 	if val == "" {
 		return defaultValue
 	}
@@ -55,7 +61,7 @@ func GetQueryString(r *http.Request, key string, defaultValue string) string {
 
 // GetQueryInt retrieves a query parameter as an integer, returning defaultValue if it's missing or invalid.
 func GetQueryInt(r *http.Request, key string, defaultValue int) int {
-	val := r.FormValue(key)
+	val := getQueryValue(r, key)
 	if val == "" {
 		return defaultValue
 	}
@@ -68,7 +74,7 @@ func GetQueryInt(r *http.Request, key string, defaultValue int) int {
 
 // GetQueryBool retrieves a query parameter as a boolean, returning defaultValue if it's missing or invalid.
 func GetQueryBool(r *http.Request, key string, defaultValue bool) bool {
-	val := r.FormValue(key)
+	val := getQueryValue(r, key)
 	if val == "" {
 		return defaultValue
 	}
@@ -83,7 +89,7 @@ func GetQueryBool(r *http.Request, key string, defaultValue bool) bool {
 // It automatically trims whitespace and removes empty segments.
 // Useful for supporting multiple filter codes (e.g. ?code=APP1,APP2).
 func GetQueryStringSlice(r *http.Request, key string) []string {
-	val := r.FormValue(key)
+	val := getQueryValue(r, key)
 	if val == "" {
 		return nil
 	}
@@ -102,7 +108,7 @@ func GetQueryStringSlice(r *http.Request, key string) []string {
 // GetQueryIntSlice retrieves a query parameter and splits it by comma into a slice of integers.
 // Invalid integers are safely ignored.
 func GetQueryIntSlice(r *http.Request, key string) []int {
-	val := r.FormValue(key)
+	val := getQueryValue(r, key)
 	if val == "" {
 		return nil
 	}
@@ -254,10 +260,11 @@ func GetClientIP(r *http.Request) string {
 	}
 
 	ip = r.RemoteAddr
-	if colon := strings.LastIndex(ip, ":"); colon != -1 {
-		ip = ip[:colon]
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	} else {
+		ip = strings.Trim(ip, "[]")
 	}
-	ip = strings.Trim(ip, "[]")
 
 	if net.ParseIP(ip) != nil {
 		return ip
@@ -280,9 +287,12 @@ func GetBearerToken(r *http.Request) string {
 }
 
 // GetHeader retrieves the first value of the specified header name from the request.
-// It returns the header value and a boolean indicating whether the header was present.
+// It performs a canonical, case-insensitive header lookup and returns the value and a boolean.
 func GetHeader(r *http.Request, name string) (string, bool) {
-	if values, ok := r.Header[name]; ok && len(values) > 0 {
+	if r == nil || r.Header == nil {
+		return "", false
+	}
+	if values := r.Header.Values(name); len(values) > 0 {
 		return values[0], true
 	}
 	return "", false
