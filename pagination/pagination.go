@@ -37,7 +37,9 @@ import (
 
 // Default values for pagination
 const (
-	DefaultPage = 1 // Default to first page
+	DefaultPage  = 1     // Default to first page
+	DefaultLimit = 10    // Default limit per page
+	MaxLimit     = 99999 // Maximum limit per page
 )
 
 // Pagination represents offset-based pagination metadata.
