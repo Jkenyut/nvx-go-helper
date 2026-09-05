@@ -176,6 +176,36 @@ The binder automatically processes and normalizes two common query parameter sty
 
 ---
 
+## 🛡️ Database Column Type Normalization
+
+HTTP query parameters and JSON cursor strings are naturally string-typed (`"true"`, `"1,2,3"`, `"2026-09-05T00:00:00Z"`). Passing raw strings to database drivers (PostgreSQL, MySQL, SQLite) often causes type mismatches or prevents indexes from being used.
+
+The `pagination` package provides automatic database type normalization:
+
+```go
+// Normalize filter values based on detected column type (integers, booleans, timestamps, UUIDs, dates, etc.)
+val, err := req.NormalizedFilterValue("users.is_active") // returns bool(true)
+ids, err := req.NormalizedFilterValue("users.id")        // returns []int64{1, 2, 3}
+
+// Normalize decoded cursor values against sort columns
+sqlArgs, err := req.NormalizedCursorValues(sortRes.Columns)
+```
+
+### Customizing Type Detection
+
+You can customize type detection rules or override types for specific columns:
+
+```go
+detector := pagination.NewTypeDetector().
+	WithOverride("custom_code", pagination.TypeString).
+	WithSuffixes(pagination.TypeTimestamp, "_at", "_date_time").
+	WithTimestampFormats(time.RFC3339, "2006-01-02 15:04:05")
+
+val, err := req.NormalizedFilterValue("custom_code", detector)
+```
+
+---
+
 ## ⚙️ Under The Hood: Dynamic Keyset Pagination
 
 When multiple rows share the same column value (e.g., duplicate timestamps or statuses), traditional single-column keyset conditions fail.

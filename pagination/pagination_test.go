@@ -298,3 +298,14 @@ func TestNewCursor(t *testing.T) {
 		})
 	}
 }
+
+func TestNewCursorFromInt(t *testing.T) {
+	cp := NewCursorFromInt(15, "next_123", "prev_123", true)
+	assert.Equal(t, 15, cp.Limit)
+	assert.Equal(t, "next_123", cp.NextCursor)
+	assert.Equal(t, "prev_123", cp.PrevCursor)
+	assert.True(t, cp.HasNext)
+
+	negative := NewCursorFromInt(-5, "", "", false)
+	assert.Equal(t, 0, negative.Limit)
+}

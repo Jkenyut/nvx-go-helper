@@ -142,6 +142,70 @@ func TestBindUnifiedFilterRequest(t *testing.T) {
 		assert.Equal(t, 20, uReq.OffsetRequest.Limit)
 		assert.Equal(t, "test", uReq.Search)
 	})
+
+	t.Run("Request NormalizedFilterValue and NormalizedCursorValues", func(t *testing.T) {
+		detector := pagination.NewTypeDetector().
+			WithIntegerSuffixes("page_num").
+			WithUUIDSuffixes("id")
+
+		// OffsetFilterRequest
+		offReq := pagination.OffsetFilterRequest{
+			Filters: map[string][]string{
+				"page_num": {"5"},
+			},
+		}
+		val, err := offReq.NormalizedFilterValue("page_num", detector)
+		require.NoError(t, err)
+		assert.Equal(t, 5, val)
+
+		// CursorFilterRequest
+		token, _ := pagination.EncodeDynamicCursor("99", "admin")
+		curReq := pagination.CursorFilterRequest{
+			Filters: map[string][]string{
+				"page_num": {"10"},
+			},
+			CursorValues: []any{"99", "admin"},
+		}
+		cVal, err := curReq.NormalizedFilterValue("page_num", detector)
+		require.NoError(t, err)
+		assert.Equal(t, 10, cVal)
+
+		cCursorVals, err := curReq.NormalizedCursorValues([]string{"page_num", "role"}, detector)
+		require.NoError(t, err)
+		assert.Equal(t, int64(99), cCursorVals[0])
+		assert.Equal(t, "admin", cCursorVals[1])
+
+		// UnifiedFilterRequest
+		uReq := pagination.UnifiedFilterRequest{
+			Filters: map[string][]string{
+				"page_num": {"15"},
+			},
+			CursorValues: []any{"100"},
+		}
+		uVal, err := uReq.NormalizedFilterValue("page_num", detector)
+		require.NoError(t, err)
+		assert.Equal(t, 15, uVal)
+
+		uCursorVals, err := uReq.NormalizedCursorValues([]string{"page_num"}, detector)
+		require.NoError(t, err)
+		assert.Equal(t, int64(100), uCursorVals[0])
+		_ = token
+
+		// Case-insensitive filter lookup
+		assert.True(t, curReq.HasFilter("PAGE_NUM"))
+		assert.Equal(t, "10", curReq.GetFirstFilter("PAGE_NUM"))
+		assert.Equal(t, []string{"10"}, curReq.GetFilter("PAGE_NUM"))
+		valCase, err := curReq.NormalizedFilterValue("PAGE_NUM", detector)
+		require.NoError(t, err)
+		assert.Equal(t, 10, valCase)
+
+		// Interface compliance
+		var _ pagination.FilterRequest = offReq
+		var _ pagination.FilterRequest = curReq
+		var _ pagination.FilterRequest = uReq
+		var _ pagination.CursorFilterProvider = curReq
+		var _ pagination.CursorFilterProvider = uReq
+	})
 }
 
 func TestResponses(t *testing.T) {

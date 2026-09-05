@@ -79,13 +79,13 @@ func TestBuildDynamicKeyset(t *testing.T) {
 }
 
 func TestInvertSort(t *testing.T) {
-	operators := []string{"<", ">", "<"}
-	orderStrs := []string{"id DESC", "name ASC", "status"}
+	operators := []string{"<", ">", "<=", ">=", "<"}
+	orderStrs := []string{"id DESC", "name ASC", "price DESC", "rating ASC", "status"}
 
 	newOps, newOrders := InvertSort(operators, orderStrs)
 
-	assert.Equal(t, []string{">", "<", ">"}, newOps)
-	assert.Equal(t, []string{"id ASC", "name DESC", "status"}, newOrders)
+	assert.Equal(t, []string{">", "<", ">=", "<=", ">"}, newOps)
+	assert.Equal(t, []string{"id ASC", "name DESC", "price ASC", "rating DESC", "status"}, newOrders)
 }
 
 func TestGenerateBidirectionalCursor(t *testing.T) {
@@ -141,6 +141,19 @@ func TestGenerateBidirectionalCursor(t *testing.T) {
 		assert.NotEmpty(t, res.NextCursor)
 		assert.True(t, res.HasNext)
 	})
+
+	t.Run("nil_extractFn_and_empty_items", func(t *testing.T) {
+		res1 := GenerateBidirectionalCursor([]mockApp{}, 10, "next", "", nil)
+		assert.Equal(t, 10, res1.Limit)
+		assert.Empty(t, res1.NextCursor)
+		assert.Empty(t, res1.PrevCursor)
+		assert.False(t, res1.HasNext)
+
+		res2 := GenerateBidirectionalCursor(items, 10, "next", "", nil)
+		assert.Equal(t, 10, res2.Limit)
+		assert.Empty(t, res2.NextCursor)
+		assert.Empty(t, res2.PrevCursor)
+	})
 }
 
 func TestPrepareDynamicSort(t *testing.T) {
@@ -191,4 +204,45 @@ func TestPrepareDynamicSort(t *testing.T) {
 		assert.Equal(t, []string{"<", ">"}, res.Operators)
 		assert.Equal(t, []string{"ga_code DESC", "ga_id ASC"}, res.OrderStrs)
 	})
+
+	t.Run("unique_column_already_in_sort_by_deduplicated", func(t *testing.T) {
+		allowedWithID := map[string]string{
+			"code": "ga_code",
+			"id":   "ga_id",
+		}
+		res := PrepareDynamicSort(DynamicSortParams{
+			SortBy:         "code, id",
+			SortType:       "asc, desc",
+			Direction:      " PREV ",
+			AllowedColumns: allowedWithID,
+			UniqueColumn:   "ga_id",
+			UniqueSortType: "DESC",
+		})
+		// ga_id should only appear once, and Direction " PREV " should be trimmed and inverted
+		assert.Equal(t, []string{"ga_code", "ga_id"}, res.Columns)
+		assert.Equal(t, []string{"<", ">"}, res.Operators)
+		assert.Equal(t, []string{"ga_code DESC", "ga_id ASC"}, res.OrderStrs)
+	})
+}
+
+func TestGetDirection(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"", "next"},
+		{"next", "next"},
+		{"NEXT", "next"},
+		{" prev ", "prev"},
+		{"PREV", "prev"},
+		{"unknown", "next"},
+	}
+
+	for _, tt := range tests {
+		params := DynamicSortParams{Direction: tt.input}
+		assert.Equal(t, tt.want, params.GetDirection())
+
+		req := DynamicCursorRequest{Direction: tt.input}
+		assert.Equal(t, tt.want, req.GetDirection())
+	}
 }

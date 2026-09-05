@@ -208,9 +208,8 @@ type CursorPagination struct {
 	HasNext    bool   `json:"has_next"`              // Whether there is a next page
 }
 
-// NewCursor creates a new CursorPagination without forcing an arbitrary default limit.
-func NewCursor(limitStr string, nextCursor string, prevCursor string, hasNext bool) CursorPagination {
-	limit := parseInt(limitStr, 0)
+// NewCursorFromInt creates a new CursorPagination from integer limit.
+func NewCursorFromInt(limit int, nextCursor string, prevCursor string, hasNext bool) CursorPagination {
 	if limit < 0 {
 		limit = 0
 	}
@@ -221,4 +220,9 @@ func NewCursor(limitStr string, nextCursor string, prevCursor string, hasNext bo
 		PrevCursor: prevCursor,
 		HasNext:    hasNext,
 	}
+}
+
+// NewCursor creates a new CursorPagination without forcing an arbitrary default limit.
+func NewCursor(limitStr string, nextCursor string, prevCursor string, hasNext bool) CursorPagination {
+	return NewCursorFromInt(parseInt(limitStr, 0), nextCursor, prevCursor, hasNext)
 }

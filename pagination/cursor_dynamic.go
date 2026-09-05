@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/Jkenyut/nvx-go-helper/request"
@@ -61,27 +60,28 @@ func BuildDynamicKeyset(columns []string, operators []string, values []any) (str
 		return "", nil
 	}
 
-	var orClauses []string
-	var finalArgs []any
+	totalArgs := n * (n + 1) / 2
+	orClauses := make([]string, 0, n)
+	finalArgs := make([]any, 0, totalArgs)
 
 	for i := 0; i < n; i++ {
-		var andClauses []string
+		andClauses := make([]string, 0, i+1)
 
 		// Add equals for all preceding columns
 		for j := 0; j < i; j++ {
-			andClauses = append(andClauses, fmt.Sprintf("%s = ?", columns[j]))
+			andClauses = append(andClauses, columns[j]+" = ?")
 			finalArgs = append(finalArgs, values[j])
 		}
 
 		// Add operator for the current column
-		andClauses = append(andClauses, fmt.Sprintf("%s %s ?", columns[i], operators[i]))
+		andClauses = append(andClauses, columns[i]+" "+operators[i]+" ?")
 		finalArgs = append(finalArgs, values[i])
 
 		// Join AND clauses for this block
 		if len(andClauses) == 1 {
-			orClauses = append(orClauses, fmt.Sprintf("(%s)", andClauses[0]))
+			orClauses = append(orClauses, "("+andClauses[0]+")")
 		} else {
-			orClauses = append(orClauses, fmt.Sprintf("(%s)", strings.Join(andClauses, " AND ")))
+			orClauses = append(orClauses, "("+strings.Join(andClauses, " AND ")+")")
 		}
 	}
 
@@ -95,9 +95,14 @@ func InvertSort(operators, orderStrs []string) ([]string, []string) {
 	newOps := make([]string, len(operators))
 	newOrders := make([]string, len(orderStrs))
 	for i, op := range operators {
-		if op == "<" {
+		switch op {
+		case "<":
 			newOps[i] = ">"
-		} else {
+		case "<=":
+			newOps[i] = ">="
+		case ">=":
+			newOps[i] = "<="
+		default:
 			newOps[i] = "<"
 		}
 	}
@@ -125,12 +130,17 @@ func GenerateBidirectionalCursor[T any](items []T, limit int, direction, current
 	var nextCursor, prevCursor string
 	hasNext := false
 
-	if len(items) > 0 {
+	dir := strings.ToLower(strings.TrimSpace(direction))
+	if dir != "prev" {
+		dir = "next"
+	}
+
+	if len(items) > 0 && extractFn != nil {
 		showPrev := true
-		if direction == "next" && currentCursor == "" {
+		if dir == "next" && currentCursor == "" {
 			showPrev = false
 		}
-		if direction == "prev" && limit > 0 && len(items) < limit {
+		if dir == "prev" && limit > 0 && len(items) < limit {
 			showPrev = false
 		}
 
@@ -139,7 +149,7 @@ func GenerateBidirectionalCursor[T any](items []T, limit int, direction, current
 			prevCursor, _ = EncodeDynamicCursor(prevVals...)
 		}
 
-		if direction == "next" {
+		if dir == "next" {
 			hasNext = limit > 0 && len(items) == limit
 		} else {
 			hasNext = true
@@ -151,8 +161,7 @@ func GenerateBidirectionalCursor[T any](items []T, limit int, direction, current
 		}
 	}
 
-	limitStr := strconv.Itoa(limit)
-	p := NewCursor(limitStr, nextCursor, prevCursor, hasNext)
+	p := NewCursorFromInt(limit, nextCursor, prevCursor, hasNext)
 	return &p
 }
 
@@ -166,6 +175,14 @@ type DynamicSortParams struct {
 	UniqueSortType string            // "ASC" or "DESC" for tie-breaker
 }
 
+// GetDirection returns the normalized direction ("next" or "prev"). Defaults to "next".
+func (p DynamicSortParams) GetDirection() string {
+	if strings.EqualFold(strings.TrimSpace(p.Direction), "prev") {
+		return "prev"
+	}
+	return "next"
+}
+
 // DynamicSortResult holds the resulting SQL columns, operators, and ORDER BY clauses.
 type DynamicSortResult struct {
 	Columns   []string
@@ -176,11 +193,14 @@ type DynamicSortResult struct {
 // PrepareDynamicSort parses sort strings, validates them against allowed columns,
 // appends the unique tie-breaker, and handles bidirectional inversion.
 func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
-	var columns, operators, orderStrs []string
-	seenCols := make(map[string]bool)
-
 	sortBys := strings.Split(params.SortBy, ",")
 	sortTypes := strings.Split(params.SortType, ",")
+
+	capHint := len(sortBys) + 1
+	columns := make([]string, 0, capHint)
+	operators := make([]string, 0, capHint)
+	orderStrs := make([]string, 0, capHint)
+	seenCols := make(map[string]bool, capHint)
 
 	for i, rawCol := range sortBys {
 		rawCol = strings.TrimSpace(rawCol)
@@ -213,35 +233,26 @@ func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
 
 		columns = append(columns, dbCol)
 		operators = append(operators, op)
-		orderStrs = append(orderStrs, fmt.Sprintf("%s %s", dbCol, strings.ToUpper(sortType)))
+		orderStrs = append(orderStrs, dbCol+" "+strings.ToUpper(sortType))
 	}
 
 	// Always append unique column at the end
-	if params.UniqueColumn != "" {
-		hasUnique := false
-		for _, col := range columns {
-			if col == params.UniqueColumn {
-				hasUnique = true
-				break
-			}
+	if params.UniqueColumn != "" && !seenCols[params.UniqueColumn] {
+		seenCols[params.UniqueColumn] = true
+		columns = append(columns, params.UniqueColumn)
+		st := strings.ToLower(strings.TrimSpace(params.UniqueSortType))
+		if st == "" {
+			st = "desc" // default to desc if not specified
 		}
-
-		if !hasUnique {
-			columns = append(columns, params.UniqueColumn)
-			st := strings.ToLower(params.UniqueSortType)
-			if st == "" {
-				st = "desc" // default to desc if not specified
-			}
-			op := ">"
-			if st == "desc" {
-				op = "<"
-			}
-			operators = append(operators, op)
-			orderStrs = append(orderStrs, fmt.Sprintf("%s %s", params.UniqueColumn, strings.ToUpper(st)))
+		op := ">"
+		if st == "desc" {
+			op = "<"
 		}
+		operators = append(operators, op)
+		orderStrs = append(orderStrs, params.UniqueColumn+" "+strings.ToUpper(st))
 	}
 
-	if params.Direction == "prev" {
+	if params.GetDirection() == "prev" {
 		operators, orderStrs = InvertSort(operators, orderStrs)
 	}
 
@@ -267,6 +278,14 @@ type DynamicCursorRequest struct {
 	Limit int `json:"limit" query:"limit"`
 	// ShowPagination expects a boolean (true/false) to toggle pagination metadata in the response.
 	ShowPagination bool `json:"show_pagination" query:"show_pagination"`
+}
+
+// GetDirection returns the normalized direction ("next" or "prev"). Defaults to "next".
+func (r DynamicCursorRequest) GetDirection() string {
+	if strings.EqualFold(strings.TrimSpace(r.Direction), "prev") {
+		return "prev"
+	}
+	return "next"
 }
 
 // BindDynamicCursorRequest extracts standard pagination parameters from an HTTP request.

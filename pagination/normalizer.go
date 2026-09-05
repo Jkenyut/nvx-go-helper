@@ -1,7 +1,10 @@
-// Package pagination provides robust pagination and filter utilities.
+// Package pagination provides robust pagination, keyset cursor, and type normalization utilities.
 package pagination
 
 import (
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -20,7 +23,7 @@ var (
 	ErrCursorLengthMismatch = errors.New("cursor length mismatch")
 )
 
-// ColumnType represents the database column data type for query parameter conversion.
+// ColumnType represents universal database column types for query parameter conversion.
 type ColumnType int
 
 // Supported database column types for type coercion and normalization.
@@ -30,7 +33,11 @@ const (
 	TypeFloat
 	TypeBoolean
 	TypeUUID
+	TypeDate
+	TypeTime
 	TypeTimestamp
+	TypeJSON
+	TypeBytes
 )
 
 // String returns the string representation of ColumnType.
@@ -44,8 +51,16 @@ func (c ColumnType) String() string {
 		return "boolean"
 	case TypeUUID:
 		return "uuid"
+	case TypeDate:
+		return "date"
+	case TypeTime:
+		return "time"
 	case TypeTimestamp:
 		return "timestamp"
+	case TypeJSON:
+		return "json"
+	case TypeBytes:
+		return "bytes"
 	default:
 		return "string"
 	}
@@ -63,44 +78,38 @@ var defaultTimestampFormats = []string{
 	"2006-01-02",
 }
 
-// TypeDetector determines column data types based on column naming conventions and explicit overrides.
+var defaultTimeFormats = []string{
+	"15:04:05.999999999",
+	"15:04:05.999999",
+	"15:04:05",
+	"15:04:05Z07:00",
+	"15:04:05-07:00",
+	"15:04",
+}
+
+// TypeDetector determines column data types based on naming conventions and explicit overrides
+// without imposing hardcoded opinions.
 type TypeDetector struct {
 	booleanSuffixes   []string
 	integerSuffixes   []string
 	floatSuffixes     []string
-	timestampSuffixes []string
 	uuidSuffixes      []string
+	dateSuffixes      []string
+	timeSuffixes      []string
+	timestampSuffixes []string
+	jsonSuffixes      []string
+	bytesSuffixes     []string
 	overrides         map[string]ColumnType
 	timestampFormats  []string
+	timeFormats       []string
 }
 
-// NewTypeDetector creates a new TypeDetector with standard enterprise column naming conventions.
+// NewTypeDetector creates a clean, non-opinionated TypeDetector with no hardcoded column lists.
 func NewTypeDetector() *TypeDetector {
 	return &TypeDetector{
-		booleanSuffixes: []string{
-			"is_active", "is_verified", "is_deleted", "is_revoked", "is_enabled",
-			"has_access", "can_edit", "status_active",
-		},
-		integerSuffixes: []string{
-			"count", "total_items", "quantity", "version", "status",
-			"role", "order", "sort_order", "level", "rpm", "attempts",
-			"limit", "offset", "type", "failed_login_attempts", "rate_limit_rpm",
-		},
-		floatSuffixes: []string{
-			"price", "rate", "percent", "percentage", "amount_decimal",
-			"fee", "tax", "lat", "latitude", "lng", "longitude",
-			"weight", "discount_rate", "score", "rating", "subtotal", "grand_total",
-		},
-		timestampSuffixes: []string{
-			"created_at", "updated_at", "deleted_at", "expires_at", "revoked_at",
-			"date", "timestamp", "last_login_at",
-		},
-		uuidSuffixes: []string{
-			"id", "app_id", "user_id", "actor_id", "target_user_id",
-			"created_by", "updated_by", "parent_id", "tenant_id", "account_id",
-		},
 		overrides:        make(map[string]ColumnType),
 		timestampFormats: defaultTimestampFormats,
+		timeFormats:      defaultTimeFormats,
 	}
 }
 
@@ -113,10 +122,15 @@ func (d *TypeDetector) Clone() *TypeDetector {
 		booleanSuffixes:   append([]string(nil), d.booleanSuffixes...),
 		integerSuffixes:   append([]string(nil), d.integerSuffixes...),
 		floatSuffixes:     append([]string(nil), d.floatSuffixes...),
-		timestampSuffixes: append([]string(nil), d.timestampSuffixes...),
 		uuidSuffixes:      append([]string(nil), d.uuidSuffixes...),
+		dateSuffixes:      append([]string(nil), d.dateSuffixes...),
+		timeSuffixes:      append([]string(nil), d.timeSuffixes...),
+		timestampSuffixes: append([]string(nil), d.timestampSuffixes...),
+		jsonSuffixes:      append([]string(nil), d.jsonSuffixes...),
+		bytesSuffixes:     append([]string(nil), d.bytesSuffixes...),
 		overrides:         make(map[string]ColumnType, len(d.overrides)),
 		timestampFormats:  append([]string(nil), d.timestampFormats...),
+		timeFormats:       append([]string(nil), d.timeFormats...),
 	}
 	for k, v := range d.overrides {
 		cp.overrides[k] = v
@@ -142,15 +156,51 @@ func (d *TypeDetector) WithFloatSuffixes(suffixes ...string) *TypeDetector {
 	return d
 }
 
+// WithUUIDSuffixes adds custom UUID column suffixes.
+func (d *TypeDetector) WithUUIDSuffixes(suffixes ...string) *TypeDetector {
+	d.uuidSuffixes = append(d.uuidSuffixes, suffixes...)
+	return d
+}
+
+// WithDateSuffixes adds custom date column suffixes.
+func (d *TypeDetector) WithDateSuffixes(suffixes ...string) *TypeDetector {
+	d.dateSuffixes = append(d.dateSuffixes, suffixes...)
+	return d
+}
+
+// WithTimeSuffixes adds custom time-of-day column suffixes.
+func (d *TypeDetector) WithTimeSuffixes(suffixes ...string) *TypeDetector {
+	d.timeSuffixes = append(d.timeSuffixes, suffixes...)
+	return d
+}
+
 // WithTimestampSuffixes adds custom timestamp column suffixes.
 func (d *TypeDetector) WithTimestampSuffixes(suffixes ...string) *TypeDetector {
 	d.timestampSuffixes = append(d.timestampSuffixes, suffixes...)
 	return d
 }
 
-// WithUUIDSuffixes adds custom UUID column suffixes.
-func (d *TypeDetector) WithUUIDSuffixes(suffixes ...string) *TypeDetector {
-	d.uuidSuffixes = append(d.uuidSuffixes, suffixes...)
+// WithJSONSuffixes adds custom JSON column suffixes.
+func (d *TypeDetector) WithJSONSuffixes(suffixes ...string) *TypeDetector {
+	d.jsonSuffixes = append(d.jsonSuffixes, suffixes...)
+	return d
+}
+
+// WithBytesSuffixes adds custom bytes/binary column suffixes.
+func (d *TypeDetector) WithBytesSuffixes(suffixes ...string) *TypeDetector {
+	d.bytesSuffixes = append(d.bytesSuffixes, suffixes...)
+	return d
+}
+
+// WithTimestampFormats adds custom timestamp parsing layouts.
+func (d *TypeDetector) WithTimestampFormats(formats ...string) *TypeDetector {
+	d.timestampFormats = append(d.timestampFormats, formats...)
+	return d
+}
+
+// WithTimeFormats adds custom time parsing layouts.
+func (d *TypeDetector) WithTimeFormats(formats ...string) *TypeDetector {
+	d.timeFormats = append(d.timeFormats, formats...)
 	return d
 }
 
@@ -165,33 +215,76 @@ func (d *TypeDetector) WithColumnOverride(column string, colType ColumnType) *Ty
 	return d.WithOverride(column, colType)
 }
 
+// WithSuffixes registers suffixes for a specific column type.
+func (d *TypeDetector) WithSuffixes(colType ColumnType, suffixes ...string) *TypeDetector {
+	switch colType {
+	case TypeBoolean:
+		return d.WithBooleanSuffixes(suffixes...)
+	case TypeInteger:
+		return d.WithIntegerSuffixes(suffixes...)
+	case TypeFloat:
+		return d.WithFloatSuffixes(suffixes...)
+	case TypeUUID:
+		return d.WithUUIDSuffixes(suffixes...)
+	case TypeDate:
+		return d.WithDateSuffixes(suffixes...)
+	case TypeTime:
+		return d.WithTimeSuffixes(suffixes...)
+	case TypeTimestamp:
+		return d.WithTimestampSuffixes(suffixes...)
+	case TypeJSON:
+		return d.WithJSONSuffixes(suffixes...)
+	case TypeBytes:
+		return d.WithBytesSuffixes(suffixes...)
+	default:
+		return d
+	}
+}
+
 func hasMatch(col string, names []string) bool {
 	for _, name := range names {
-		if col == name || strings.HasSuffix(col, "_"+name) {
+		cleanName := strings.TrimPrefix(name, "_")
+		if col == cleanName || strings.HasSuffix(col, "_"+cleanName) {
 			return true
 		}
 	}
 	return false
 }
 
-// DetectColumnType infers the column data type from column names (supporting table prefixes like ga_id, gr_is_active).
+// DetectColumnType infers the column data type from column names (supporting table prefixes like ga_id, u.id, users.is_active).
 func (d *TypeDetector) DetectColumnType(col string) ColumnType {
 	col = strings.ToLower(strings.TrimSpace(col))
 	if t, exists := d.overrides[col]; exists {
 		return t
 	}
 
+	baseCol := col
+	if idx := strings.LastIndexByte(col, '.'); idx != -1 {
+		baseCol = col[idx+1:]
+		if t, exists := d.overrides[baseCol]; exists {
+			return t
+		}
+	}
+
 	switch {
-	case hasMatch(col, d.booleanSuffixes):
+	case hasMatch(baseCol, d.booleanSuffixes):
 		return TypeBoolean
-	case hasMatch(col, d.floatSuffixes):
+	case hasMatch(baseCol, d.floatSuffixes):
 		return TypeFloat
-	case hasMatch(col, d.integerSuffixes):
+	case hasMatch(baseCol, d.integerSuffixes):
 		return TypeInteger
-	case hasMatch(col, d.timestampSuffixes):
-		return TypeTimestamp
-	case hasMatch(col, d.uuidSuffixes):
+	case hasMatch(baseCol, d.uuidSuffixes):
 		return TypeUUID
+	case hasMatch(baseCol, d.dateSuffixes):
+		return TypeDate
+	case hasMatch(baseCol, d.timeSuffixes):
+		return TypeTime
+	case hasMatch(baseCol, d.timestampSuffixes):
+		return TypeTimestamp
+	case hasMatch(baseCol, d.jsonSuffixes):
+		return TypeJSON
+	case hasMatch(baseCol, d.bytesSuffixes):
+		return TypeBytes
 	default:
 		return TypeString
 	}
@@ -210,6 +303,92 @@ func (d *TypeDetector) parseTimestamp(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("unable to parse timestamp: %s", s)
+}
+
+func (d *TypeDetector) parseDate(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t.UTC(), nil
+	}
+	for _, layout := range d.timestampFormats {
+		if t, err := time.Parse(layout, s); err == nil {
+			return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unable to parse date (expected YYYY-MM-DD): %s", s)
+}
+
+func (d *TypeDetector) parseTime(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	for _, layout := range d.timeFormats {
+		if _, err := time.Parse(layout, s); err == nil {
+			return s, nil
+		}
+	}
+	return "", fmt.Errorf("unable to parse time: %s", s)
+}
+
+func isHexString(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9':
+		case c >= 'a' && c <= 'f':
+		case c >= 'A' && c <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (d *TypeDetector) parseBytes(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if len(s) == 0 {
+		return []byte{}, nil
+	}
+
+	// 1. Explicit hex prefixes: \x (PostgreSQL), 0x (MySQL/programming)
+	if strings.HasPrefix(s, `\x`) || strings.HasPrefix(s, `\X`) ||
+		strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+		b, err := hex.DecodeString(s[2:])
+		if err != nil {
+			return nil, fmt.Errorf("invalid hex encoding: %w", err)
+		}
+		return b, nil
+	}
+
+	// 2. Base64 with padding or base64-specific characters (=, +, /, _, -)
+	if strings.ContainsAny(s, "=+/_-") {
+		if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+			return b, nil
+		}
+		if b, err := base64.URLEncoding.DecodeString(s); err == nil {
+			return b, nil
+		}
+		if b, err := base64.RawStdEncoding.DecodeString(s); err == nil {
+			return b, nil
+		}
+		if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
+			return b, nil
+		}
+	}
+
+	// 3. Pure hex string (even length, characters 0-9, a-f, A-F)
+	// Prioritized over Base64 to prevent corrupting SHA256, MD5, and binary hashes.
+	if len(s)%2 == 0 && isHexString(s) {
+		if b, err := hex.DecodeString(s); err == nil {
+			return b, nil
+		}
+	}
+
+	// 4. Raw Base64 (unpadded alphanumeric base64)
+	if b, err := base64.RawStdEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+
+	// 5. Fallback to raw string bytes
+	return []byte(s), nil
 }
 
 // NormalizeFilterValue converts raw query string filter values into type-safe Go representations
@@ -281,6 +460,34 @@ func (d *TypeDetector) NormalizeFilterValue(dbCol string, rawVals []string) (any
 		}
 		return uuids, nil
 
+	case TypeDate:
+		if len(rawVals) == 1 {
+			t, err := d.parseDate(rawVals[0])
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects date (YYYY-MM-DD), got %q", ErrInvalidFilterValue, dbCol, rawVals[0])
+			}
+			return t, nil
+		}
+		dates := make([]time.Time, 0, len(rawVals))
+		for _, v := range rawVals {
+			t, err := d.parseDate(v)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects date in list, got %q", ErrInvalidFilterValue, dbCol, v)
+			}
+			dates = append(dates, t)
+		}
+		return dates, nil
+
+	case TypeTime:
+		if len(rawVals) == 1 {
+			tStr, err := d.parseTime(rawVals[0])
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects time format, got %q", ErrInvalidFilterValue, dbCol, rawVals[0])
+			}
+			return tStr, nil
+		}
+		return rawVals, nil
+
 	case TypeTimestamp:
 		if len(rawVals) == 1 {
 			t, err := d.parseTimestamp(rawVals[0])
@@ -290,6 +497,33 @@ func (d *TypeDetector) NormalizeFilterValue(dbCol string, rawVals []string) (any
 			return t, nil
 		}
 		return nil, fmt.Errorf("%w: column %s expects single timestamp", ErrInvalidFilterValue, dbCol)
+
+	case TypeJSON:
+		if len(rawVals) == 1 {
+			if !json.Valid([]byte(rawVals[0])) {
+				return nil, fmt.Errorf("%w: column %s expects valid JSON, got %q", ErrInvalidFilterValue, dbCol, rawVals[0])
+			}
+			return rawVals[0], nil
+		}
+		return nil, fmt.Errorf("%w: column %s expects single JSON string", ErrInvalidFilterValue, dbCol)
+
+	case TypeBytes:
+		if len(rawVals) == 1 {
+			b, err := d.parseBytes(rawVals[0])
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects valid bytes, got %q: %w", ErrInvalidFilterValue, dbCol, rawVals[0], err)
+			}
+			return b, nil
+		}
+		bytesList := make([][]byte, 0, len(rawVals))
+		for _, v := range rawVals {
+			b, err := d.parseBytes(v)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects valid bytes in list, got %q: %w", ErrInvalidFilterValue, dbCol, v, err)
+			}
+			bytesList = append(bytesList, b)
+		}
+		return bytesList, nil
 
 	default: // TypeString
 		if len(rawVals) == 1 {
@@ -305,8 +539,7 @@ func NormalizeFilterValue(dbCol string, rawVals []string) (any, error) {
 }
 
 // NormalizeCursorValues validates and converts raw JSON-unmarshaled cursor values into strict,
-// typed values matching database column types (e.g. converting ISO-8601 strings to time.Time,
-// strings to uuid.UUID, float64 to int64, numbers to float64).
+// typed values matching database column types.
 func (d *TypeDetector) NormalizeCursorValues(columns []string, cursorValues []any) ([]any, error) {
 	if len(columns) == 0 || len(cursorValues) == 0 {
 		return nil, nil
@@ -339,6 +572,34 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 	}
 
 	switch colType {
+	case TypeDate:
+		switch v := val.(type) {
+		case string:
+			t, err := d.parseDate(v)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects date cursor, got %q", ErrInvalidCursorValue, col, v)
+			}
+			return t, nil
+		case time.Time:
+			return time.Date(v.Year(), v.Month(), v.Day(), 0, 0, 0, 0, time.UTC), nil
+		default:
+			return nil, fmt.Errorf("%w: column %s expects date cursor, got %T", ErrInvalidCursorValue, col, val)
+		}
+
+	case TypeTime:
+		switch v := val.(type) {
+		case string:
+			tStr, err := d.parseTime(v)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects time cursor, got %q", ErrInvalidCursorValue, col, v)
+			}
+			return tStr, nil
+		case time.Time:
+			return v.Format("15:04:05"), nil
+		default:
+			return fmt.Sprintf("%v", v), nil
+		}
+
 	case TypeTimestamp:
 		switch v := val.(type) {
 		case string:
@@ -369,12 +630,30 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 
 	case TypeInteger:
 		switch v := val.(type) {
-		case float64:
-			return int64(v), nil
 		case int:
 			return int64(v), nil
 		case int64:
 			return v, nil
+		case int32:
+			return int64(v), nil
+		case int16:
+			return int64(v), nil
+		case int8:
+			return int64(v), nil
+		case uint:
+			return int64(v), nil
+		case uint64:
+			return int64(v), nil
+		case uint32:
+			return int64(v), nil
+		case uint16:
+			return int64(v), nil
+		case uint8:
+			return int64(v), nil
+		case float64:
+			return int64(v), nil
+		case float32:
+			return int64(v), nil
 		case string:
 			num, err := strconv.ParseInt(v, 10, 64)
 			if err != nil {
@@ -395,6 +674,22 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 			return float64(v), nil
 		case int64:
 			return float64(v), nil
+		case int32:
+			return float64(v), nil
+		case int16:
+			return float64(v), nil
+		case int8:
+			return float64(v), nil
+		case uint:
+			return float64(v), nil
+		case uint64:
+			return float64(v), nil
+		case uint32:
+			return float64(v), nil
+		case uint16:
+			return float64(v), nil
+		case uint8:
+			return float64(v), nil
 		case string:
 			f, err := strconv.ParseFloat(v, 64)
 			if err != nil {
@@ -409,6 +704,14 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 		switch v := val.(type) {
 		case bool:
 			return v, nil
+		case int:
+			return v != 0, nil
+		case int64:
+			return v != 0, nil
+		case int32:
+			return v != 0, nil
+		case float64:
+			return v != 0, nil
 		case string:
 			b, err := strconv.ParseBool(v)
 			if err != nil {
@@ -417,6 +720,45 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 			return b, nil
 		default:
 			return nil, fmt.Errorf("%w: column %s expects boolean cursor, got %T", ErrInvalidCursorValue, col, val)
+		}
+
+	case TypeJSON:
+		switch v := val.(type) {
+		case string:
+			if !json.Valid([]byte(v)) {
+				return nil, fmt.Errorf("%w: column %s expects valid JSON cursor, got %q", ErrInvalidCursorValue, col, v)
+			}
+			return v, nil
+		default:
+			b, err := json.Marshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s cannot serialize to JSON cursor: %w", ErrInvalidCursorValue, col, err)
+			}
+			return string(b), nil
+		}
+
+	case TypeBytes:
+		switch v := val.(type) {
+		case []byte:
+			return v, nil
+		case string:
+			b, err := d.parseBytes(v)
+			if err != nil {
+				return nil, fmt.Errorf("%w: column %s expects valid bytes cursor, got %q: %w", ErrInvalidCursorValue, col, v, err)
+			}
+			return b, nil
+		case []any:
+			b := make([]byte, len(v))
+			for i, elem := range v {
+				num, ok := elem.(float64)
+				if !ok {
+					return nil, fmt.Errorf("%w: column %s byte array contains non-numeric element %T", ErrInvalidCursorValue, col, elem)
+				}
+				b[i] = byte(num)
+			}
+			return b, nil
+		default:
+			return fmt.Sprintf("%v", v), nil
 		}
 
 	default: // TypeString
@@ -432,16 +774,16 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 // SanitizeLimit clamps limit between 1 and maxLimit (defaulting to MaxLimit: 99999).
 // If limit <= 0, it falls back to DefaultLimit (10).
 func SanitizeLimit(limit int, maxLimit ...int) int {
-	max := MaxLimit
+	allowedMax := MaxLimit
 	if len(maxLimit) > 0 && maxLimit[0] > 0 {
-		max = maxLimit[0]
+		allowedMax = maxLimit[0]
 	}
 
 	if limit <= 0 {
 		return DefaultLimit
 	}
-	if limit > max {
-		return max
+	if limit > allowedMax {
+		return allowedMax
 	}
 	return limit
 }

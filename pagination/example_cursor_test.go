@@ -51,10 +51,10 @@ func Example_dynamicCursor() {
 	})
 
 	var sqlWhere string
-	var sqlArgs []interface{}
+	var sqlArgs []any
 
 	// b. Extract Cursor Values if a cursor is sent by the user
-	var cursorVals []interface{}
+	var cursorVals []any
 	if dto.Cursor != "" {
 		cursorVals, _ = pagination.DecodeDynamicCursor(dto.Cursor)
 	}
@@ -87,7 +87,7 @@ func Example_dynamicCursor() {
 	}
 
 	// a. You must reverse the array if navigating backwards (Prev)
-	if dto.Direction == "prev" {
+	if dto.GetDirection() == "prev" {
 		users = sliceutil.Reverse(users)
 	}
 
@@ -97,10 +97,10 @@ func Example_dynamicCursor() {
 		dto.Limit,
 		dto.Direction,
 		dto.Cursor,
-		func(u User) []interface{} {
+		func(u User) []any {
 			// You only need to define how to extract values from the struct.
 			// The order MUST EXACTLY MATCH the sort configuration.
-			var vals []interface{}
+			var vals []any
 
 			sortBys := strings.Split(dto.SortBy, ",")
 			for _, col := range sortBys {
