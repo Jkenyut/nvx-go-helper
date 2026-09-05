@@ -4,13 +4,13 @@ package pagination
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 )
 
@@ -500,7 +500,7 @@ func (d *TypeDetector) NormalizeFilterValue(dbCol string, rawVals []string) (any
 
 	case TypeJSON:
 		if len(rawVals) == 1 {
-			if !json.Valid([]byte(rawVals[0])) {
+			if !sonic.ValidString(rawVals[0]) {
 				return nil, fmt.Errorf("%w: column %s expects valid JSON, got %q", ErrInvalidFilterValue, dbCol, rawVals[0])
 			}
 			return rawVals[0], nil
@@ -725,12 +725,12 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 	case TypeJSON:
 		switch v := val.(type) {
 		case string:
-			if !json.Valid([]byte(v)) {
+			if !sonic.ValidString(v) {
 				return nil, fmt.Errorf("%w: column %s expects valid JSON cursor, got %q", ErrInvalidCursorValue, col, v)
 			}
 			return v, nil
 		default:
-			b, err := json.Marshal(v)
+			b, err := sonic.Marshal(v)
 			if err != nil {
 				return nil, fmt.Errorf("%w: column %s cannot serialize to JSON cursor: %w", ErrInvalidCursorValue, col, err)
 			}
