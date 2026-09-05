@@ -39,11 +39,78 @@ func TestGetQueryInt(t *testing.T) {
 	assert.Equal(t, 5, GetQueryInt(req, "offset", 5))
 }
 
+func TestGetQueryInt64(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/?id=9223372036854775807&invalid=abc", http.NoBody)
+	assert.Equal(t, int64(9223372036854775807), GetQueryInt64(req, "id", 0))
+	assert.Equal(t, int64(100), GetQueryInt64(req, "invalid", 100))
+	assert.Equal(t, int64(50), GetQueryInt64(req, "missing", 50))
+}
+
 func TestGetQueryBool(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/?active=true&admin=false&invalid=abc", http.NoBody)
 	assert.Equal(t, true, GetQueryBool(req, "active", false))
 	assert.Equal(t, false, GetQueryBool(req, "admin", true))
 	assert.Equal(t, false, GetQueryBool(req, "invalid", false))
+}
+
+func TestGetPathHelpers(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/shield/admin/apps/app_123", http.NoBody)
+	req.SetPathValue("id", "app_123")
+	req.SetPathValue("num", "42")
+	req.SetPathValue("big", "9223372036854775807")
+	req.SetPathValue("flag", "true")
+	testUUID := "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+	req.SetPathValue("uuid", testUUID)
+
+	// GetPathValue
+	assert.Equal(t, "app_123", GetPathValue(req, "id"))
+	assert.Equal(t, "app_123", GetPathValue(req, "{id}")) // test bracket trimming
+	assert.Equal(t, "", GetPathValue(req, "nonexistent"))
+
+	// GetPathString
+	assert.Equal(t, "app_123", GetPathString(req, "id"))
+	assert.Equal(t, "app_123", GetPathString(req, "{id}", "fallback"))
+	assert.Equal(t, "fallback", GetPathString(req, "missing", "fallback"))
+	assert.Equal(t, "", GetPathString(req, "missing"))
+
+	// GetPathInt
+	assert.Equal(t, 42, GetPathInt(req, "num"))
+	assert.Equal(t, 42, GetPathInt(req, "{num}", 99))
+	assert.Equal(t, 99, GetPathInt(req, "id", 99)) // "app_123" is not an int
+	assert.Equal(t, 0, GetPathInt(req, "id"))      // default 0 without arg
+	assert.Equal(t, 10, GetPathInt(req, "missing", 10))
+
+	// GetPathInt64
+	assert.Equal(t, int64(9223372036854775807), GetPathInt64(req, "big"))
+	assert.Equal(t, int64(9223372036854775807), GetPathInt64(req, "{big}", 99))
+	assert.Equal(t, int64(99), GetPathInt64(req, "id", 99))
+	assert.Equal(t, int64(0), GetPathInt64(req, "id"))
+
+	// GetPathBool
+	assert.True(t, GetPathBool(req, "flag"))
+	assert.True(t, GetPathBool(req, "{flag}", false))
+	assert.False(t, GetPathBool(req, "id")) // invalid bool defaults to false
+	assert.True(t, GetPathBool(req, "id", true))
+
+	// GetPathUUID
+	u, err := GetPathUUID(req, "uuid")
+	assert.NoError(t, err)
+	assert.Equal(t, testUUID, u.String())
+
+	_, err = GetPathUUID(req, "id") // not a uuid
+	assert.Error(t, err)
+
+	_, err = GetPathUUID(req, "missing") // empty path value
+	assert.Error(t, err)
+
+	// Nil request safety
+	assert.Equal(t, "", GetPathValue(nil, "id"))
+	assert.Equal(t, "default", GetPathString(nil, "id", "default"))
+	assert.Equal(t, 0, GetPathInt(nil, "id"))
+	assert.Equal(t, int64(0), GetPathInt64(nil, "id"))
+	assert.False(t, GetPathBool(nil, "id"))
+	_, err = GetPathUUID(nil, "id")
+	assert.Error(t, err)
 }
 
 func TestGetBearerToken(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Jkenyut/nvx-go-helper/validator"
 	"github.com/bytedance/sonic"
+	"github.com/google/uuid"
 )
 
 // BindJSON reads the HTTP request body and decodes the JSON data into the provided struct (dest).
@@ -72,6 +73,19 @@ func GetQueryInt(r *http.Request, key string, defaultValue int) int {
 	return parsed
 }
 
+// GetQueryInt64 retrieves a query parameter as a 64-bit integer, returning defaultValue if it's missing or invalid.
+func GetQueryInt64(r *http.Request, key string, defaultValue int64) int64 {
+	val := getQueryValue(r, key)
+	if val == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
 // GetQueryBool retrieves a query parameter as a boolean, returning defaultValue if it's missing or invalid.
 func GetQueryBool(r *http.Request, key string, defaultValue bool) bool {
 	val := getQueryValue(r, key)
@@ -83,6 +97,98 @@ func GetQueryBool(r *http.Request, key string, defaultValue bool) bool {
 		return defaultValue
 	}
 	return parsed
+}
+
+func getPathValue(r *http.Request, key string) string {
+	if r == nil {
+		return ""
+	}
+	cleanKey := strings.Trim(strings.TrimSpace(key), "{}")
+	return r.PathValue(cleanKey)
+}
+
+// GetPathValue retrieves a path parameter string directly from the request URL path pattern.
+func GetPathValue(r *http.Request, key string) string {
+	return getPathValue(r, key)
+}
+
+// GetPathString retrieves a path parameter as a string, returning defaultValue if it is empty.
+// If defaultValue is omitted, it returns an empty string when the path parameter is missing.
+func GetPathString(r *http.Request, key string, defaultValue ...string) string {
+	val := getPathValue(r, key)
+	if val == "" && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return val
+}
+
+// GetPathInt retrieves a path parameter as an integer, returning defaultValue if it is missing or invalid.
+// If defaultValue is omitted, it returns 0 when missing or invalid.
+func GetPathInt(r *http.Request, key string, defaultValue ...int) int {
+	val := getPathValue(r, key)
+	if val == "" {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return 0
+	}
+	parsed, err := strconv.Atoi(val)
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return 0
+	}
+	return parsed
+}
+
+// GetPathInt64 retrieves a path parameter as a 64-bit integer, returning defaultValue if it is missing or invalid.
+// If defaultValue is omitted, it returns 0 when missing or invalid.
+func GetPathInt64(r *http.Request, key string, defaultValue ...int64) int64 {
+	val := getPathValue(r, key)
+	if val == "" {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return 0
+	}
+	parsed, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return 0
+	}
+	return parsed
+}
+
+// GetPathBool retrieves a path parameter as a boolean, returning defaultValue if it is missing or invalid.
+// If defaultValue is omitted, it returns false when missing or invalid.
+func GetPathBool(r *http.Request, key string, defaultValue ...bool) bool {
+	val := getPathValue(r, key)
+	if val == "" {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return false
+	}
+	parsed, err := strconv.ParseBool(val)
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return false
+	}
+	return parsed
+}
+
+// GetPathUUID retrieves and parses a path parameter as a UUID.
+func GetPathUUID(r *http.Request, key string) (uuid.UUID, error) {
+	val := getPathValue(r, key)
+	if val == "" {
+		return uuid.Nil, errors.New("empty path parameter: " + key)
+	}
+	return uuid.Parse(val)
 }
 
 // GetQueryStringSlice retrieves a query parameter and splits it by comma into a slice of strings.
