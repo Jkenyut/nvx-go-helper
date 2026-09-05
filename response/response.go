@@ -364,10 +364,5 @@ func (r Response) JSONEncoder(w io.Writer) {
 // WriteHTTP writes the Content-Type: application/json header, writes the HTTP status code,
 // and streams the JSON encoded Response to the http.ResponseWriter.
 func (r Response) WriteHTTP(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	if r.Meta.StatusCode == 0 {
-		r.Meta.StatusCode = 200
-	}
-	w.WriteHeader(r.Meta.StatusCode)
-	r.JSONEncoder(w)
+	WriteJSONResponse(w, r)
 }

@@ -5,8 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 )
 
@@ -78,50 +76,17 @@ func DecryptRSA(privateKey *rsa.PrivateKey, ciphertext []byte) ([]byte, error) {
 
 // ExportRSAPublicKeyAsPEM converts an RSA public key to a PEM-encoded string (SPKI format).
 func ExportRSAPublicKeyAsPEM(pubKey *rsa.PublicKey) (string, error) {
-	if pubKey == nil {
-		return "", errors.New("public key is nil")
-	}
-
-	x509EncodedPub, err := x509.MarshalPKIXPublicKey(pubKey)
-	if err != nil {
-		return "", err
-	}
-
-	pemEncodedPub := pem.EncodeToMemory(&pem.Block{
-		Type:  "PUBLIC KEY",
-		Bytes: x509EncodedPub,
-	})
-
-	return string(pemEncodedPub), nil
+	return exportPublicKeyToPEM(pubKey)
 }
 
 // ExportRSAPrivateKeyAsPEM converts an RSA private key to a PEM-encoded string (PKCS#8 format).
 func ExportRSAPrivateKeyAsPEM(privKey *rsa.PrivateKey) (string, error) {
-	if privKey == nil {
-		return "", errors.New("private key is nil")
-	}
-
-	x509EncodedPriv, err := x509.MarshalPKCS8PrivateKey(privKey)
-	if err != nil {
-		return "", err
-	}
-
-	pemEncodedPriv := pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: x509EncodedPriv,
-	})
-
-	return string(pemEncodedPriv), nil
+	return exportPrivateKeyToPEM(privKey)
 }
 
 // ParseRSAPublicKeyFromPEM parses a PEM-encoded string back into an RSA public key.
 func ParseRSAPublicKeyFromPEM(pemStr string) (*rsa.PublicKey, error) {
-	block, _ := pem.Decode([]byte(pemStr))
-	if block == nil {
-		return nil, errors.New("failed to parse PEM block containing the public key")
-	}
-
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	pub, err := parsePKIXPublicKeyFromPEM(pemStr)
 	if err != nil {
 		return nil, err
 	}
@@ -136,12 +101,7 @@ func ParseRSAPublicKeyFromPEM(pemStr string) (*rsa.PublicKey, error) {
 
 // ParseRSAPrivateKeyFromPEM parses a PEM-encoded string back into an RSA private key.
 func ParseRSAPrivateKeyFromPEM(pemStr string) (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode([]byte(pemStr))
-	if block == nil {
-		return nil, errors.New("failed to parse PEM block containing the private key")
-	}
-
-	priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	priv, err := parsePKCS8PrivateKeyFromPEM(pemStr)
 	if err != nil {
 		return nil, err
 	}

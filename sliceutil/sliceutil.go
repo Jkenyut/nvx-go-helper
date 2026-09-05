@@ -4,7 +4,11 @@
 // Zero external dependencies.
 package sliceutil
 
-import "slices"
+import (
+	"slices"
+
+	"github.com/Jkenyut/nvx-go-helper/maputil"
+)
 
 // Chunk splits a single slice into multiple smaller slices, each of a specified maximum size.
 // If the input slice is empty, it returns an empty slice of slices.
@@ -231,56 +235,25 @@ func Flatten[T any](slices [][]T) []T {
 // MapKeys returns a slice containing all the keys from a map.
 // The order of the keys is not guaranteed.
 func MapKeys[K comparable, V any](m map[K]V) []K {
-	keys := make([]K, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
+	return maputil.Keys(m)
 }
 
 // MapValues returns a slice containing all the values from a map.
 // The order of the values is not guaranteed.
 func MapValues[K comparable, V any](m map[K]V) []V {
-	values := make([]V, 0, len(m))
-	for _, v := range m {
-		values = append(values, v)
-	}
-	return values
+	return maputil.Values(m)
 }
 
 // MapMerge merges multiple maps into a new map.
 // If there are duplicate keys, the value from the map provided later in the arguments will overwrite earlier ones.
 func MapMerge[K comparable, V any](maps ...map[K]V) map[K]V {
-	totalLen := 0
-	for _, m := range maps {
-		totalLen += len(m)
-	}
-	result := make(map[K]V, totalLen)
-	for _, m := range maps {
-		for k, v := range m {
-			result[k] = v
-		}
-	}
-	return result
+	return maputil.Merge(maps...)
 }
 
 // MergeSlices merges multiple slices into a new slice.
 // The order of the elements will be preserved from the order of the input slices.
 func MergeSlices[T any](slices ...[]T) []T {
-	if len(slices) == 0 {
-		return []T{}
-	}
-
-	var totalLen int
-	for i := range slices {
-		totalLen += len(slices[i])
-	}
-
-	result := make([]T, 0, totalLen)
-	for i := range slices {
-		result = append(result, slices[i]...)
-	}
-	return result
+	return Flatten(slices)
 }
 
 // Reduce reduces a slice to a single value by applying the given function

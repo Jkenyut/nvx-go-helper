@@ -7,8 +7,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 )
 
@@ -172,51 +170,18 @@ func DecryptECC(privKey *ecdsa.PrivateKey, packedData []byte) ([]byte, error) {
 // ExportPublicKeyAsPEM converts an ECDSA public key to a PEM-encoded string (SPKI format).
 // This is highly useful for sending the public key to a frontend application.
 func ExportPublicKeyAsPEM(pubKey *ecdsa.PublicKey) (string, error) {
-	if pubKey == nil {
-		return "", errors.New("public key is nil")
-	}
-
-	x509EncodedPub, err := x509.MarshalPKIXPublicKey(pubKey)
-	if err != nil {
-		return "", err
-	}
-
-	pemEncodedPub := pem.EncodeToMemory(&pem.Block{
-		Type:  "PUBLIC KEY",
-		Bytes: x509EncodedPub,
-	})
-
-	return string(pemEncodedPub), nil
+	return exportPublicKeyToPEM(pubKey)
 }
 
 // ExportPrivateKeyAsPEM converts an ECDSA private key to a PEM-encoded string (PKCS#8 format).
 // Store this securely! Do not send this to the frontend.
 func ExportPrivateKeyAsPEM(privKey *ecdsa.PrivateKey) (string, error) {
-	if privKey == nil {
-		return "", errors.New("private key is nil")
-	}
-
-	x509EncodedPriv, err := x509.MarshalPKCS8PrivateKey(privKey)
-	if err != nil {
-		return "", err
-	}
-
-	pemEncodedPriv := pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: x509EncodedPriv,
-	})
-
-	return string(pemEncodedPriv), nil
+	return exportPrivateKeyToPEM(privKey)
 }
 
 // ParsePublicKeyFromPEM parses a PEM-encoded string back into an ECDSA public key.
 func ParsePublicKeyFromPEM(pemStr string) (*ecdsa.PublicKey, error) {
-	block, _ := pem.Decode([]byte(pemStr))
-	if block == nil {
-		return nil, errors.New("failed to parse PEM block containing the public key")
-	}
-
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	pub, err := parsePKIXPublicKeyFromPEM(pemStr)
 	if err != nil {
 		return nil, err
 	}
@@ -231,12 +196,7 @@ func ParsePublicKeyFromPEM(pemStr string) (*ecdsa.PublicKey, error) {
 
 // ParsePrivateKeyFromPEM parses a PEM-encoded string back into an ECDSA private key.
 func ParsePrivateKeyFromPEM(pemStr string) (*ecdsa.PrivateKey, error) {
-	block, _ := pem.Decode([]byte(pemStr))
-	if block == nil {
-		return nil, errors.New("failed to parse PEM block containing the private key")
-	}
-
-	priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	priv, err := parsePKCS8PrivateKeyFromPEM(pemStr)
 	if err != nil {
 		return nil, err
 	}

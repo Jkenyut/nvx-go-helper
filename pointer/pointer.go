@@ -20,25 +20,25 @@ func Of[T any](v T) *T {
 // String returns a pointer to the given string.
 // (Legacy helper, prefer Of)
 func String(s string) *string {
-	return &s
+	return Of(s)
 }
 
 // Int returns a pointer to the given int.
 // (Legacy helper, prefer Of)
 func Int(i int) *int {
-	return &i
+	return Of(i)
 }
 
 // Bool returns a pointer to the given bool.
 // (Legacy helper, prefer Of)
 func Bool(b bool) *bool {
-	return &b
+	return Of(b)
 }
 
 // Time returns a pointer to the given time.Time.
 // (Legacy helper, prefer Of)
 func Time(t time.Time) *time.Time {
-	return &t
+	return Of(t)
 }
 
 // Deref safely dereferences a pointer.
@@ -52,11 +52,8 @@ func Time(t time.Time) *time.Time {
 //	name = pointer.Of("John")
 //	val = pointer.Deref(name)   // "John"
 func Deref[T any](p *T) T {
-	if p == nil {
-		var zero T
-		return zero
-	}
-	return *p
+	var zero T
+	return DerefOr(p, zero)
 }
 
 // DerefOr safely dereferences a pointer with a fallback default value.

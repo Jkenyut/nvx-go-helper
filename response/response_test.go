@@ -109,6 +109,7 @@ func TestErrorResponses(t *testing.T) {
 		"InsufficientStorage":     func(c context.Context) Response { return InsufficientStorage(c, "insufficient storage") },
 		"LoopDetected":            func(c context.Context) Response { return LoopDetected(c, "loop detected") },
 		"NotExtended":             func(c context.Context) Response { return NotExtended(c, "not extended") },
+		"PreconditionRequired":    func(c context.Context) Response { return PreconditionRequired(c, "precondition required") },
 		"NetworkAuthenticationRequired": func(c context.Context) Response {
 			return NetworkAuthenticationRequired(c, "network authentication required")
 		},
@@ -230,4 +231,17 @@ func TestResponse_WriteHTTP(t *testing.T) {
 	assert.Equal(t, 201, result.Meta.StatusCode)
 	assert.Equal(t, "test-write-http-123", result.Meta.RequestID)
 	assert.Equal(t, "user created", result.Meta.Message)
+}
+
+func TestSetHeaderAndSetHeaders(t *testing.T) {
+	rec := httptest.NewRecorder()
+	SetHeader(rec, "X-Single", "val1")
+	assert.Equal(t, "val1", rec.Header().Get("X-Single"))
+
+	SetHeaders(rec, map[string]string{
+		"X-Multi-1": "val2",
+		"X-Multi-2": "val3",
+	})
+	assert.Equal(t, "val2", rec.Header().Get("X-Multi-1"))
+	assert.Equal(t, "val3", rec.Header().Get("X-Multi-2"))
 }

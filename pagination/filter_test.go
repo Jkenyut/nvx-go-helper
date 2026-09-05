@@ -125,8 +125,10 @@ func TestBindUnifiedFilterRequest(t *testing.T) {
 
 		assert.True(t, uReq.IsCursor)
 		assert.Equal(t, encodedCursor, uReq.DynamicCursorRequest.Cursor)
-		assert.Len(t, uReq.CursorValues, 1)
 		assert.True(t, uReq.HasFilter("status"))
+		assert.Equal(t, []string{"active"}, uReq.GetFilter("status"))
+		assert.Equal(t, "active", uReq.GetFirstFilter("status"))
+		assert.Empty(t, uReq.GetFirstFilter("nonexistent"))
 	})
 
 	t.Run("Falls back to offset pagination", func(t *testing.T) {

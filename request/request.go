@@ -108,20 +108,14 @@ func GetQueryStringSlice(r *http.Request, key string) []string {
 // GetQueryIntSlice retrieves a query parameter and splits it by comma into a slice of integers.
 // Invalid integers are safely ignored.
 func GetQueryIntSlice(r *http.Request, key string) []int {
-	val := getQueryValue(r, key)
-	if val == "" {
+	strs := GetQueryStringSlice(r, key)
+	if len(strs) == 0 {
 		return nil
 	}
 
-	var result []int
-	parts := strings.Split(val, ",")
-	for _, p := range parts {
-		clean := strings.TrimSpace(p)
-		if clean == "" {
-			continue
-		}
-		num, err := strconv.Atoi(clean)
-		if err == nil {
+	result := make([]int, 0, len(strs))
+	for _, s := range strs {
+		if num, err := strconv.Atoi(s); err == nil {
 			result = append(result, num)
 		}
 	}
@@ -169,34 +163,21 @@ func GetQueryMapSlice(r *http.Request, key string, delimiter string) map[string]
 // Invalid integers are safely ignored.
 // Example format: ?group=status:1,2&group=category:3,4
 func GetQueryMapIntSlice(r *http.Request, key string, delimiter string) map[string][]int {
-	result := make(map[string][]int)
-
-	values := r.URL.Query()[key]
-	if len(values) == 0 {
-		return result
+	rawMap := GetQueryMapSlice(r, key, delimiter)
+	if len(rawMap) == 0 {
+		return make(map[string][]int)
 	}
 
-	for _, val := range values {
-		parts := strings.SplitN(val, delimiter, 2)
-		if len(parts) != 2 {
-			continue // Ignore if it doesn't match the delimiter format
-		}
-
-		groupKey := strings.TrimSpace(parts[0])
-		if groupKey == "" {
-			continue
-		}
-
-		rawValues := strings.Split(parts[1], ",")
-		for _, rv := range rawValues {
-			clean := strings.TrimSpace(rv)
-			if clean == "" {
-				continue
+	result := make(map[string][]int, len(rawMap))
+	for groupKey, items := range rawMap {
+		var nums []int
+		for _, item := range items {
+			if num, err := strconv.Atoi(item); err == nil {
+				nums = append(nums, num)
 			}
-			num, err := strconv.Atoi(clean)
-			if err == nil {
-				result[groupKey] = append(result[groupKey], num)
-			}
+		}
+		if len(nums) > 0 {
+			result[groupKey] = nums
 		}
 	}
 
@@ -207,34 +188,21 @@ func GetQueryMapIntSlice(r *http.Request, key string, delimiter string) map[stri
 // Invalid booleans are safely ignored.
 // Example format: ?group=featureA:true,false&group=featureB:true
 func GetQueryMapBoolSlice(r *http.Request, key string, delimiter string) map[string][]bool {
-	result := make(map[string][]bool)
-
-	values := r.URL.Query()[key]
-	if len(values) == 0 {
-		return result
+	rawMap := GetQueryMapSlice(r, key, delimiter)
+	if len(rawMap) == 0 {
+		return make(map[string][]bool)
 	}
 
-	for _, val := range values {
-		parts := strings.SplitN(val, delimiter, 2)
-		if len(parts) != 2 {
-			continue // Ignore if it doesn't match the delimiter format
-		}
-
-		groupKey := strings.TrimSpace(parts[0])
-		if groupKey == "" {
-			continue
-		}
-
-		rawValues := strings.Split(parts[1], ",")
-		for _, rv := range rawValues {
-			clean := strings.TrimSpace(rv)
-			if clean == "" {
-				continue
+	result := make(map[string][]bool, len(rawMap))
+	for groupKey, items := range rawMap {
+		var bools []bool
+		for _, item := range items {
+			if b, err := strconv.ParseBool(item); err == nil {
+				bools = append(bools, b)
 			}
-			b, err := strconv.ParseBool(clean)
-			if err == nil {
-				result[groupKey] = append(result[groupKey], b)
-			}
+		}
+		if len(bools) > 0 {
+			result[groupKey] = bools
 		}
 	}
 

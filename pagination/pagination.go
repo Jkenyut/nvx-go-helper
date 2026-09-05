@@ -127,7 +127,6 @@ type OffsetRequest struct {
 }
 
 // BindOffsetRequest extracts standard offset pagination parameters from an HTTP request.
-// BindOffsetRequest extracts standard offset pagination parameters from an HTTP request.
 // If limit is not specified in the query, it defaults to 0 (no limit forced by helper).
 func BindOffsetRequest(r *http.Request) OffsetRequest {
 	return OffsetRequest{
