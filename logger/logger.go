@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,20 +43,22 @@ type Config struct {
 	Port        int    `json:"port" yaml:"port"`
 }
 
-// Environment returns the environment string, defaulting to "development".
+// Environment returns the normalized lowercase environment string.
+// Defaults to "development" if empty or whitespace-only.
 func (c Config) Environment() string {
-	if c.Env == "" {
-		return "development"
+	if env := strings.ToLower(strings.TrimSpace(c.Env)); env != "" {
+		return env
 	}
-	return c.Env
+	return "development"
 }
 
-// ServiceName returns the service name, defaulting to "unknown-service".
+// ServiceName returns the trimmed name of the service.
+// Defaults to "unknown-service" if empty or whitespace-only.
 func (c Config) ServiceName() string {
-	if c.NameService == "" {
-		return "unknown-service"
+	if name := strings.TrimSpace(c.NameService); name != "" {
+		return name
 	}
-	return c.NameService
+	return "unknown-service"
 }
 
 // ConfigProvider represents any configuration struct capable of providing
@@ -78,7 +81,8 @@ func InitFromConfig(cfg ConfigProvider) {
 	}
 
 	var writer io.Writer
-	isProd := env == "production" || env == "prod"
+	cleanEnv := strings.ToLower(strings.TrimSpace(env))
+	isProd := cleanEnv == "production" || cleanEnv == "prod"
 
 	if isProd {
 		writer = io.MultiWriter(os.Stdout)
@@ -191,12 +195,22 @@ func SlogWithContext(ctx context.Context) *slog.Logger {
 	return slog.New(&zerologSlogHandler{logger: Ctx(ctx)})
 }
 
-// Convenience global functions
+// Debug returns a zerolog.Event for debug-level logging with context.
 func Debug(ctx context.Context) *zerolog.Event { return Ctx(ctx).Debug() }
-func Info(ctx context.Context) *zerolog.Event  { return Ctx(ctx).Info() }
-func Warn(ctx context.Context) *zerolog.Event  { return Ctx(ctx).Warn() }
+
+// Info returns a zerolog.Event for info-level logging with context.
+func Info(ctx context.Context) *zerolog.Event { return Ctx(ctx).Info() }
+
+// Warn returns a zerolog.Event for warning-level logging with context.
+func Warn(ctx context.Context) *zerolog.Event { return Ctx(ctx).Warn() }
+
+// Error returns a zerolog.Event for error-level logging with context.
 func Error(ctx context.Context) *zerolog.Event { return Ctx(ctx).Error() }
+
+// Fatal returns a zerolog.Event for fatal-level logging with context.
 func Fatal(ctx context.Context) *zerolog.Event { return Ctx(ctx).Fatal() }
+
+// Panic returns a zerolog.Event for panic-level logging with context.
 func Panic(ctx context.Context) *zerolog.Event { return Ctx(ctx).Panic() }
 
 // zerologSlogHandler adapts zerolog to slog.Handler
@@ -252,6 +266,6 @@ func (h *zerologSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &zerologSlogHandler{logger: &l}
 }
 
-func (h *zerologSlogHandler) WithGroup(name string) slog.Handler {
+func (h *zerologSlogHandler) WithGroup(_ string) slog.Handler {
 	return h
 }
