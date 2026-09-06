@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,14 +17,6 @@ func TestActivityContext(t *testing.T) {
 		got, ok := GetTransactionID(ctx)
 		assert.True(t, ok)
 		assert.Equal(t, trxID, got)
-	})
-
-	t.Run("APIKey", func(t *testing.T) {
-		key := "api-456"
-		ctx = WithAPIKey(ctx, key)
-		got, ok := GetAPIKey(ctx)
-		assert.True(t, ok)
-		assert.Equal(t, key, got)
 	})
 
 	t.Run("RequestID", func(t *testing.T) {
@@ -91,14 +84,42 @@ func TestActivityContext(t *testing.T) {
 		assert.Equal(t, "custom-value", customVal)
 	})
 
+	t.Run("Metadata", func(t *testing.T) {
+		emptyCtx := context.Background()
+		// Test empty metadata no-op
+		noOpCtx := WithMetadata(emptyCtx, nil)
+		_, hasMeta := GetMetadata(noOpCtx)
+		assert.False(t, hasMeta)
+
+		meta := map[string]any{"source": "web", "version": "v1.0"}
+		ctxMeta := WithMetadata(emptyCtx, meta)
+		gotMeta, ok := GetMetadata(ctxMeta)
+		assert.True(t, ok)
+		assert.Equal(t, "web", gotMeta["source"])
+		assert.Equal(t, "v1.0", gotMeta["version"])
+
+		// Test merge
+		ctxMerged := WithMetadata(ctxMeta, map[string]any{"env": "prod"})
+		gotMerged, okMerged := GetMetadata(ctxMerged)
+		assert.True(t, okMerged)
+		assert.Equal(t, "web", gotMerged["source"])
+		assert.Equal(t, "prod", gotMerged["env"])
+	})
+
 	t.Run("GetAllFieldsFromContext", func(t *testing.T) {
 		fields := GetAllFieldsFromContext(ctx)
 		assert.Equal(t, "trx-123", fields["transaction_id"])
-		assert.Equal(t, "api-456", fields["api_key"])
 		assert.Equal(t, "req-789", fields["request_id"])
 		assert.Equal(t, "user-001", fields["user_id"])
 		assert.Equal(t, "127.0.0.1", fields["user_ip"])
 		assert.Equal(t, "10.0.0.1", fields["user_ip_origin"])
+	})
+
+	t.Run("GetAllFieldsFromContext_WithMetadata", func(t *testing.T) {
+		ctxWithMeta := WithMetadata(ctx, map[string]any{"module": "payment"})
+		fields := GetAllFieldsFromContext(ctxWithMeta)
+		assert.Equal(t, "payment", fields["module"])
+		assert.Equal(t, "trx-123", fields["transaction_id"])
 	})
 
 	t.Run("GetAllFieldsFromContext_Empty", func(t *testing.T) {
@@ -111,6 +132,76 @@ func TestActivityContext(t *testing.T) {
 		emptyCtx := context.Background()
 		_, ok := GetTransactionID(emptyCtx)
 		assert.False(t, ok)
+	})
+
+	t.Run("UnsetFields", func(t *testing.T) {
+		emptyCtx := context.Background()
+		_, okReq := GetRequestID(emptyCtx)
+		assert.False(t, okReq)
+		_, okUID := GetUserID(emptyCtx)
+		assert.False(t, okUID)
+		_, okIP := GetUserIP(emptyCtx)
+		assert.False(t, okIP)
+		_, okIPOrigin := GetUserIPOrigin(emptyCtx)
+		assert.False(t, okIPOrigin)
+	})
+}
+
+func TestActivityStruct(t *testing.T) {
+	orig := Activity{
+		TransactionID: "trx-batch-1",
+		RequestID:     "req-batch-2",
+		UserID:        "user-batch-3",
+		UserIP:        "192.168.1.1",
+		UserIPOrigin:  "10.10.10.10",
+	}
+
+	ctx := WithActivity(context.Background(), orig)
+
+	// Verify standard getters work with values injected via WithActivity
+	reqID, okReq := GetRequestID(ctx)
+	assert.True(t, okReq)
+	assert.Equal(t, "req-batch-2", reqID)
+
+	uid, okUID := GetUserID(ctx)
+	assert.True(t, okUID)
+	assert.Equal(t, "user-batch-3", uid)
+
+	// Verify FromContext
+	extracted := FromContext(ctx)
+	assert.Equal(t, orig, extracted)
+}
+
+func TestToSlogAttrs(t *testing.T) {
+	t.Run("Populated", func(t *testing.T) {
+		act := Activity{
+			TransactionID: "trx-slog",
+			RequestID:     "req-slog",
+			UserID:        "user-slog",
+			UserIP:        "127.0.0.1",
+			UserIPOrigin:  "10.0.0.1",
+		}
+		ctx := WithActivity(context.Background(), act)
+		attrs := ToSlogAttrs(ctx)
+
+		assert.Len(t, attrs, 5)
+
+		attrMap := make(map[string]string, len(attrs))
+		for _, a := range attrs {
+			assert.Equal(t, slog.KindString, a.Value.Kind())
+			attrMap[a.Key] = a.Value.String()
+		}
+
+		assert.Equal(t, "trx-slog", attrMap["transaction_id"])
+		assert.Equal(t, "req-slog", attrMap["request_id"])
+		assert.Equal(t, "user-slog", attrMap["user_id"])
+		assert.Equal(t, "127.0.0.1", attrMap["user_ip"])
+		assert.Equal(t, "10.0.0.1", attrMap["user_ip_origin"])
+	})
+
+	t.Run("Empty", func(t *testing.T) {
+		attrs := ToSlogAttrs(context.Background())
+		assert.Empty(t, attrs)
 	})
 }
 

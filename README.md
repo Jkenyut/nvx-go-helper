@@ -52,22 +52,35 @@ go get github.com/Jkenyut/nvx-go-helper
 ## 🚀 Package Guides & Examples
 
 ### 1. Activity (`/activity`)
-Inject and extract request metadata across context boundaries. Integrates seamlessly with structured loggers (Zap, Logrus, `slog`).
+Inject and extract request metadata across context boundaries. Integrates seamlessly with structured loggers (**Zerolog**, Zap, Logrus, and native Go 1.21+ `slog`).
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/activity"
 
-// Inject into Context (typically in HTTP Middleware)
-ctx := activity.WithRequestID(context.Background(), "req-abc-123")
-ctx = activity.WithUserID(ctx, "user-456")
+// Inject into Context (individual or batch via Activity struct)
+ctx := activity.WithActivity(context.Background(), activity.Activity{
+    RequestID: "req-abc-123",
+    UserID:    "user-456",
+    UserIP:    "127.0.0.1",
+})
 
 // Extract anywhere downstream
 userID, ok := activity.GetUserID(ctx)
-requestID := activity.GetRequestID(ctx)
+act := activity.FromContext(ctx)
 
-// Export all fields as a map for structured loggers
+// Integration with Zerolog (Map-based or Zero-alloc Chaining):
 fields := activity.GetAllFieldsFromContext(ctx)
-// map[string]any{"request_id": "req-abc-123", "user_id": "user-456"}
+log.Info().Fields(fields).Msg("user action recorded")
+
+// Or Zero-allocation fluent extraction with Zerolog:
+log.Info().
+    Str("req_id", act.RequestID).
+    Str("user_id", act.UserID).
+    Str("user_ip", act.UserIP).
+    Msg("transaction processed")
+
+// Integration with native log/slog (Go 1.21+):
+attrs := activity.ToSlogAttrs(ctx) // []slog.Attr for zero-alloc slog.LogAttrs
 ```
 
 ---
