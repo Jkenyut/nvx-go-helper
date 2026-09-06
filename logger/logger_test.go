@@ -6,8 +6,11 @@ import (
 	"sync"
 	"testing"
 
+	"bytes"
+	"github.com/Jkenyut/nvx-go-helper/activity"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/trace"
+	"strings"
 )
 
 func TestInitFromConfig_Environments(t *testing.T) {
@@ -176,4 +179,59 @@ func TestSlogBridge(t *testing.T) {
 		t.Fatal("SlogWithContext() returned nil")
 	}
 	ctxLogger.Debug("test debug with ctx", "active", true)
+}
+
+func TestActivityHook(t *testing.T) {
+	var buf bytes.Buffer
+	log := zerolog.New(&buf).Hook(ActivityHook{})
+
+	ctx := context.Background()
+	ctx = activity.WithRequestID(ctx, "req-xyz-123")
+	ctx = activity.WithTransactionID(ctx, "trx-abc-456")
+	ctx = activity.WithUserID(ctx, "user-999")
+	ctx = activity.WithUserIP(ctx, "192.168.1.50")
+	ctx = activity.WithUserIPOrigin(ctx, "203.0.113.195")
+	ctx = activity.WithMetadata(ctx, map[string]any{"custom_tenant": "tenant-alpha"})
+
+	t.Run("zerolog with Ctx context", func(t *testing.T) {
+		buf.Reset()
+		log.Info().Ctx(ctx).Msg("test activity hook message")
+
+		out := buf.String()
+		for _, expected := range []string{
+			"\"request_id\":\"req-xyz-123\"",
+			"\"transaction_id\":\"trx-abc-456\"",
+			"\"user_id\":\"user-999\"",
+			"\"user_ip\":\"192.168.1.50\"",
+			"\"user_ip_origin\":\"203.0.113.195\"",
+			"\"custom_tenant\":\"tenant-alpha\"",
+			"test activity hook message",
+		} {
+			if !strings.Contains(out, expected) {
+				t.Errorf("expected output to contain %q, got: %s", expected, out)
+			}
+		}
+	})
+
+	t.Run("slog bridge with context", func(t *testing.T) {
+		buf.Reset()
+		slogHandler := &zerologSlogHandler{logger: &log}
+		slogger := slog.New(slogHandler)
+		slogger.InfoContext(ctx, "test slog activity message")
+
+		out := buf.String()
+		for _, expected := range []string{
+			"\"request_id\":\"req-xyz-123\"",
+			"\"transaction_id\":\"trx-abc-456\"",
+			"\"user_id\":\"user-999\"",
+			"\"user_ip\":\"192.168.1.50\"",
+			"\"user_ip_origin\":\"203.0.113.195\"",
+			"\"custom_tenant\":\"tenant-alpha\"",
+			"test slog activity message",
+		} {
+			if !strings.Contains(out, expected) {
+				t.Errorf("expected slog output to contain %q, got: %s", expected, out)
+			}
+		}
+	})
 }

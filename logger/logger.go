@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Jkenyut/nvx-go-helper/activity"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/diode"
 	"go.opentelemetry.io/otel/trace"
@@ -66,6 +67,53 @@ func (c Config) ServiceName() string {
 type ConfigProvider interface {
 	ServiceName() string
 	Environment() string
+}
+
+// ActivityHook extracts contextual metadata from activity context
+// (such as request_id, transaction_id, user_id, user_ip, ip_origin, and custom metadata)
+// and OpenTelemetry trace/span IDs, automatically attaching them to every log event.
+type ActivityHook struct{}
+
+// Run implements zerolog.Hook.
+func (h ActivityHook) Run(e *zerolog.Event, level zerolog.Level, message string) {
+	ctx := e.GetCtx()
+	if ctx == nil {
+		return
+	}
+
+	// 1. OpenTelemetry trace and span IDs
+	spanCtx := trace.SpanContextFromContext(ctx)
+	if spanCtx.HasTraceID() {
+		e.Str("trace_id", spanCtx.TraceID().String())
+	}
+	if spanCtx.HasSpanID() {
+		e.Str("span_id", spanCtx.SpanID().String())
+	}
+
+	// 2. Standard activity context fields
+	act := activity.FromContext(ctx)
+	if act.RequestID != "" {
+		e.Str("request_id", act.RequestID)
+	}
+	if act.TransactionID != "" {
+		e.Str("transaction_id", act.TransactionID)
+	}
+	if act.UserID != "" {
+		e.Str("user_id", act.UserID)
+	}
+	if act.UserIP != "" {
+		e.Str("user_ip", act.UserIP)
+	}
+	if act.UserIPOrigin != "" {
+		e.Str("user_ip_origin", act.UserIPOrigin)
+	}
+
+	// 3. Custom metadata map attached via activity.WithMetadata
+	if meta, ok := activity.GetMetadata(ctx); ok && len(meta) > 0 {
+		for k, v := range meta {
+			e.Interface(k, v)
+		}
+	}
 }
 
 // InitFromConfig initializes the global zerolog logger using values from the
@@ -142,7 +190,7 @@ func InitFromConfig(cfg ConfigProvider) {
 		logContext = logContext.Caller()
 	}
 
-	log := logContext.Logger()
+	log := logContext.Logger().Hook(ActivityHook{})
 	zerolog.DefaultContextLogger = &log
 }
 
@@ -169,18 +217,14 @@ func L() *zerolog.Logger {
 	return zerolog.DefaultContextLogger
 }
 
-// Ctx returns a logger instance with OpenTelemetry trace_id and span_id from context.
+// Ctx returns a logger instance bound to the provided context.
+// Any log event created from this logger (or with .Ctx(ctx)) will automatically
+// execute the ActivityHook, extracting all activity metadata and OpenTelemetry spans.
 func Ctx(ctx context.Context) *zerolog.Logger {
-	l := L().With().Logger()
-	if ctx != nil {
-		spanCtx := trace.SpanContextFromContext(ctx)
-		if spanCtx.HasTraceID() {
-			l = l.With().Str("trace_id", spanCtx.TraceID().String()).Logger()
-		}
-		if spanCtx.HasSpanID() {
-			l = l.With().Str("span_id", spanCtx.SpanID().String()).Logger()
-		}
+	if ctx == nil {
+		return L()
 	}
+	l := L().With().Ctx(ctx).Logger()
 	return &l
 }
 
@@ -233,7 +277,7 @@ func (h *zerologSlogHandler) Enabled(_ context.Context, level slog.Level) bool {
 	}
 }
 
-func (h *zerologSlogHandler) Handle(_ context.Context, r slog.Record) error {
+func (h *zerologSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 	var e *zerolog.Event
 	switch r.Level {
 	case slog.LevelDebug:
@@ -246,6 +290,10 @@ func (h *zerologSlogHandler) Handle(_ context.Context, r slog.Record) error {
 		e = h.logger.Error()
 	default:
 		e = h.logger.Info()
+	}
+
+	if ctx != nil {
+		e = e.Ctx(ctx)
 	}
 
 	r.Attrs(func(a slog.Attr) bool {
