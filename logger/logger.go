@@ -297,7 +297,12 @@ func (h *zerologSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	r.Attrs(func(a slog.Attr) bool {
-		e = e.Any(a.Key, a.Value.Any())
+		val := a.Value.Any()
+		if err, ok := val.(error); ok {
+			e = e.AnErr(a.Key, err)
+		} else {
+			e = e.Any(a.Key, val)
+		}
 		return true
 	})
 
