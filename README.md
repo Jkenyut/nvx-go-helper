@@ -395,26 +395,30 @@ if err != nil {
 Generic concurrent worker pool with context-aware cancellation, order preservation, and progress tracking.
 
 ```go
-import "github.com/Jkenyut/nvx-go-helper/worker"
+import (
+    "github.com/Jkenyut/nvx-go-helper/worker"
+)
 
 jobs := []worker.Job[string, int]{
     {ID: "job-1", Data: 10},
     {ID: "job-2", Data: 20},
 }
 
-cfg := worker.PoolConfig{
-    NumWorkers:    4,
-    PreserveOrder: true,
-    OnProgress: func(completed, total int) {
-        log.Printf("Completed %d of %d", completed, total)
-    },
-}
-
 workerFn := func(ctx context.Context, id string, data int) (string, error) {
     return fmt.Sprintf("result-%d", data), nil
 }
 
-results, err := worker.RunGenericWorkerPool(ctx, jobs, workerFn, nil, cfg)
+// Modern idiomatic execution with functional options
+results, err := worker.Run(
+    ctx,
+    jobs,
+    workerFn,
+    worker.WithWorkers(4),
+    worker.WithPreserveOrder(true),
+    worker.WithOnProgress(func(completed, total int) {
+        log.Printf("Completed %d of %d", completed, total)
+    }),
+)
 ```
 
 ---
@@ -428,12 +432,12 @@ import (
     "github.com/rs/zerolog/log"
 )
 
-// Initialize logger with service environment
-logger.Init(logger.Config{
-    NameService: "user-service",
-    Env:         "production", // "production" -> JSON output; "development" -> colored console
-    Port:        8080,
-})
+// Initialize logger with functional options
+logger.Init(
+    logger.WithServiceName("user-service"),
+    logger.WithEnv("production"), // "production" -> JSON output; "development" -> colored console
+    logger.WithPort(8080),
+)
 defer logger.Close()
 
 // Context-aware logging with automatic trace_id & span_id injection

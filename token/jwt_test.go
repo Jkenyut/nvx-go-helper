@@ -175,3 +175,61 @@ func TestHashToken(t *testing.T) {
 		t.Errorf("expected 64 character hex string, got length %d", len(hash1))
 	}
 }
+
+func TestVerifyES256JWT_WithOptions(t *testing.T) {
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	pubKey := &privKey.PublicKey
+
+	// 1. Clock skew test: token expired 10 seconds ago, but verified with 30s clock skew
+	expiredClaims := StandardClaims{
+		Subject:   "user-skew",
+		Issuer:    "expected-issuer",
+		Audience:  "expected-audience",
+		ExpiresAt: time.Now().Add(-10 * time.Second).Unix(),
+	}
+	tokenStr, err := GenerateES256JWT(privKey, expiredClaims)
+	if err != nil {
+		t.Fatalf("failed to generate token: %v", err)
+	}
+
+	// Without clock skew: must fail
+	_, err = VerifyES256JWT[any](pubKey, tokenStr)
+	if !errors.Is(err, ErrTokenExpired) {
+		t.Errorf("expected ErrTokenExpired without skew, got %v", err)
+	}
+
+	// With clock skew 30s: must succeed
+	verified, err := VerifyES256JWT[any](pubKey, tokenStr,
+		WithClockSkew(30*time.Second),
+		WithExpectedIssuer("expected-issuer"),
+		WithExpectedAudience("expected-audience"),
+	)
+	if err != nil {
+		t.Fatalf("expected token to verify with clock skew, got %v", err)
+	}
+	if verified.Subject != "user-skew" {
+		t.Errorf("expected subject user-skew, got %s", verified.Subject)
+	}
+
+	// Issuer mismatch test
+	_, err = VerifyES256JWT[any](pubKey, tokenStr,
+		WithClockSkew(30*time.Second),
+		WithExpectedIssuer("wrong-issuer"),
+	)
+	if !errors.Is(err, ErrIssuerMismatch) {
+		t.Errorf("expected ErrIssuerMismatch, got %v", err)
+	}
+
+	// Audience mismatch test
+	_, err = VerifyES256JWT[any](pubKey, tokenStr,
+		WithClockSkew(30*time.Second),
+		WithExpectedAudience("wrong-audience"),
+	)
+	if !errors.Is(err, ErrAudienceMismatch) {
+		t.Errorf("expected ErrAudienceMismatch, got %v", err)
+	}
+}
+

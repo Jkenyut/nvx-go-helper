@@ -71,6 +71,62 @@ type ConfigProvider interface {
 	Environment() string
 }
 
+type options struct {
+	serviceName string
+	env         string
+	port        int
+	level       string
+	bufferSize  int
+	writer      io.Writer
+}
+
+// Option configures logger behavior.
+type Option func(*options)
+
+// WithServiceName sets the service name attribute included in every log entry.
+func WithServiceName(name string) Option {
+	return func(o *options) {
+		o.serviceName = strings.TrimSpace(name)
+	}
+}
+
+// WithEnv sets the environment name (e.g., "production", "development", "staging").
+func WithEnv(env string) Option {
+	return func(o *options) {
+		o.env = strings.TrimSpace(env)
+	}
+}
+
+// WithPort sets the application port attribute included in log entries.
+func WithPort(port int) Option {
+	return func(o *options) {
+		o.port = port
+	}
+}
+
+// WithLevel sets a custom log level (e.g., "debug", "info", "warn", "error").
+func WithLevel(level string) Option {
+	return func(o *options) {
+		o.level = strings.TrimSpace(level)
+	}
+}
+
+// WithBufferSize overrides the diode asynchronous ring-buffer size.
+func WithBufferSize(size int) Option {
+	return func(o *options) {
+		if size > 0 {
+			o.bufferSize = size
+		}
+	}
+}
+
+// WithWriter sets a custom underlying io.Writer (e.g., for testing or custom log sinks).
+func WithWriter(w io.Writer) Option {
+	return func(o *options) {
+		o.writer = w
+	}
+}
+
 // ActivityHook extracts contextual metadata from activity context
 // (such as request_id, transaction_id, user_id, user_ip, ip_origin, and custom metadata)
 // and OpenTelemetry trace/span IDs, automatically attaching them to every log event.
@@ -118,51 +174,67 @@ func (h ActivityHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
 	}
 }
 
-// InitFromConfig initializes the global zerolog logger using values from the
-// provided configuration provider.
-func InitFromConfig(cfg ConfigProvider) {
-	env := cfg.Environment()
-	serviceName := cfg.ServiceName()
-	port := 0
-	if c, ok := cfg.(Config); ok {
-		port = c.Port
-	} else if p, ok := cfg.(interface{ GetPort() int }); ok {
-		port = p.GetPort()
+// Init initializes the global zerolog logger using functional options.
+// If called without options, it defaults to development mode with console output to stderr.
+func Init(opts ...Option) {
+	o := options{
+		serviceName: "unknown-service",
+		env:         "development",
+		port:        0,
+		bufferSize:  1000,
+	}
+	for _, opt := range opts {
+		opt(&o)
 	}
 
-	var writer io.Writer
-	cleanEnv := strings.ToLower(strings.TrimSpace(env))
+	cleanEnv := strings.ToLower(strings.TrimSpace(o.env))
+	if cleanEnv == "" {
+		cleanEnv = "development"
+	}
 	isProd := cleanEnv == "production" || cleanEnv == "prod"
+	if isProd && o.bufferSize == 1000 {
+		o.bufferSize = 10000
+	}
 
-	if isProd {
-		writer = io.MultiWriter(os.Stdout)
-	} else {
-		writer = zerolog.ConsoleWriter{
-			Out:     os.Stderr,
-			NoColor: false,
-			FormatFieldValue: func(i any) string {
-				switch v := i.(type) {
-				case []byte:
-					return string(v)
-				case json.RawMessage:
-					return string(v)
-				case map[string]any, []any, map[string]string:
-					if b, err := sonic.Marshal(v); err == nil {
-						return string(b)
+	writer := o.writer
+	if writer == nil {
+		if isProd {
+			writer = io.MultiWriter(os.Stdout)
+		} else {
+			writer = zerolog.ConsoleWriter{
+				Out:     os.Stderr,
+				NoColor: false,
+				FormatFieldValue: func(i any) string {
+					switch v := i.(type) {
+					case []byte:
+						return string(v)
+					case json.RawMessage:
+						return string(v)
+					case map[string]any, []any, map[string]string:
+						if b, err := sonic.Marshal(v); err == nil {
+							return string(b)
+						}
 					}
-				}
-				return fmt.Sprintf("%v", i)
-			},
+					return fmt.Sprintf("%v", i)
+				},
+			}
 		}
 	}
 
 	zerolog.TimeFieldFormat = time.RFC3339
 
-	if levelStr := os.Getenv("LOG_LEVEL"); levelStr != "" {
-		if level, err := zerolog.ParseLevel(levelStr); err == nil {
-			zerolog.SetGlobalLevel(level)
+	// 1. Check custom level option first
+	if o.level != "" {
+		if lvl, err := zerolog.ParseLevel(o.level); err == nil {
+			zerolog.SetGlobalLevel(lvl)
+		}
+	} else if levelStr := os.Getenv("LOG_LEVEL"); levelStr != "" {
+		// 2. Environment variable override
+		if lvl, err := zerolog.ParseLevel(levelStr); err == nil {
+			zerolog.SetGlobalLevel(lvl)
 		}
 	} else {
+		// 3. Fallback to environment default
 		if isProd {
 			zerolog.SetGlobalLevel(zerolog.InfoLevel)
 		} else {
@@ -170,17 +242,13 @@ func InitFromConfig(cfg ConfigProvider) {
 		}
 	}
 
-	diodeSize := 1000
-	if isProd {
-		diodeSize = 10000
-	}
 	if sizeStr := os.Getenv("LOG_BUFFER_SIZE"); sizeStr != "" {
 		if s, err := strconv.Atoi(sizeStr); err == nil && s > 0 {
-			diodeSize = s
+			o.bufferSize = s
 		}
 	}
 
-	wr := diode.NewWriter(writer, diodeSize, 10*time.Millisecond, func(missed int) {
+	wr := diode.NewWriter(writer, o.bufferSize, 10*time.Millisecond, func(missed int) {
 		_, _ = fmt.Fprintf(os.Stderr, "[logger] warning: diode dropped %d log messages\n", missed)
 	})
 
@@ -194,11 +262,11 @@ func InitFromConfig(cfg ConfigProvider) {
 	logContext := zerolog.New(wr).
 		With().
 		Timestamp().
-		Str("service", serviceName).
-		Str("env", env)
+		Str("service", o.serviceName).
+		Str("env", o.env)
 
-	if port > 0 {
-		logContext = logContext.Int("port", port)
+	if o.port > 0 {
+		logContext = logContext.Int("port", o.port)
 	}
 
 	if !isProd {
@@ -207,6 +275,25 @@ func InitFromConfig(cfg ConfigProvider) {
 
 	log := logContext.Logger().Hook(ActivityHook{})
 	zerolog.DefaultContextLogger = &log
+}
+
+// InitFromConfig initializes the global zerolog logger using values from the
+// provided configuration provider (maintained for backward compatibility with driver configs).
+func InitFromConfig(cfg ConfigProvider) {
+	env := cfg.Environment()
+	serviceName := cfg.ServiceName()
+	port := 0
+	if c, ok := cfg.(Config); ok {
+		port = c.Port
+	} else if p, ok := cfg.(interface{ GetPort() int }); ok {
+		port = p.GetPort()
+	}
+
+	Init(
+		WithServiceName(serviceName),
+		WithEnv(env),
+		WithPort(port),
+	)
 }
 
 // Close flushes all remaining logs in the buffer and stops the background

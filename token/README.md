@@ -84,6 +84,7 @@ tokenString, err := token.GenerateES256JWT(privKey, claims)
 ```go
 pubKey := &privKey.PublicKey
 
+// Standard verification
 validatedClaims, err := token.VerifyES256JWT[UserPayload](pubKey, tokenString)
 if err != nil {
 	// Handle token.ErrTokenExpired, token.ErrInvalidSignature, etc.
@@ -92,4 +93,22 @@ if err != nil {
 
 user := validatedClaims.Data
 // user.UserID == "usr_12345"
+```
+
+### 3. Verification with Functional Options (`VerifyOption`)
+
+Accommodate distributed clock differences (clock skew) and enforce issuer/audience claims:
+
+```go
+validatedClaims, err := token.VerifyES256JWT[UserPayload](
+	pubKey,
+	tokenString,
+	token.WithClockSkew(30*time.Second),      // Tolerates up to 30s clock drift across microservices
+	token.WithExpectedIssuer("auth-service"),  // Validates 'iss' claim matches
+	token.WithExpectedAudience("mobile-app"),  // Validates 'aud' claim matches
+)
+if err != nil {
+	// Handles ErrIssuerMismatch, ErrAudienceMismatch, ErrTokenExpired, etc.
+	return
+}
 ```

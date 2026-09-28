@@ -288,3 +288,34 @@ func TestConsoleWriter_JSONFormatting(t *testing.T) {
 	}
 }
 
+func TestInit_WithOptions(t *testing.T) {
+	var buf bytes.Buffer
+	Init(
+		WithServiceName("custom-service"),
+		WithEnv("staging"),
+		WithPort(9090),
+		WithLevel("warn"),
+		WithWriter(&buf),
+		WithBufferSize(2000),
+	)
+	defer func() { _ = Close() }()
+
+	if zerolog.GlobalLevel() != zerolog.WarnLevel {
+		t.Errorf("expected WarnLevel, got %v", zerolog.GlobalLevel())
+	}
+
+	L().Warn().Msg("warning event")
+	_ = Close()
+
+	out := buf.String()
+	if !strings.Contains(out, "custom-service") {
+		t.Errorf("expected output to contain service name, got: %s", out)
+	}
+	if !strings.Contains(out, "staging") {
+		t.Errorf("expected output to contain env, got: %s", out)
+	}
+	if !strings.Contains(out, "warning event") {
+		t.Errorf("expected output to contain log message, got: %s", out)
+	}
+}
+

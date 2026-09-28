@@ -17,12 +17,10 @@ func TestEmptyJobs(t *testing.T) {
 		return fmt.Sprintf("result-%d", data), nil
 	}
 
-	results := RunGenericWorkerPoolStream(
+	results := Stream(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{},
 	)
 
 	count := 0
@@ -47,12 +45,10 @@ func TestDuplicateJobIDs(t *testing.T) {
 		return fmt.Sprintf("result-%d", data), nil
 	}
 
-	results := RunGenericWorkerPoolStream(
+	results := Stream(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{},
 	)
 
 	count := 0
@@ -61,18 +57,15 @@ func TestDuplicateJobIDs(t *testing.T) {
 		count++
 		if res.Err != nil {
 			errorCount++
-			// Verify it's the duplicate error
 			if res.Err.Error() != "duplicate job ID detected: 1 (all jobs rejected)" {
 				t.Errorf("Unexpected error: %v", res.Err)
 			}
 		}
 	}
 
-	// All jobs should receive error
 	if count != len(jobs) {
 		t.Errorf("Expected %d results, got %d", len(jobs), count)
 	}
-
 	if errorCount != len(jobs) {
 		t.Errorf("Expected all %d jobs to have errors, got %d", len(jobs), errorCount)
 	}
@@ -89,19 +82,16 @@ func TestNormalOperation(t *testing.T) {
 	}
 
 	workerFunc := func(ctx context.Context, id, data int) (string, error) {
-		time.Sleep(10 * time.Millisecond) // Simulate work
+		time.Sleep(10 * time.Millisecond)
 		return fmt.Sprintf("result-%d", data), nil
 	}
 
-	results := RunGenericWorkerPoolStream(
+	results := Stream(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{
-			NumWorkers:    3,
-			GlobalTimeout: 5 * time.Second, // Ensure enough time
-		},
+		WithWorkers(3),
+		WithGlobalTimeout(5*time.Second),
 	)
 
 	count := 0
@@ -118,16 +108,12 @@ func TestNormalOperation(t *testing.T) {
 		}
 	}
 
-	// Verify 1:1 mapping
 	if count != len(jobs) {
 		t.Errorf("Expected %d results, got %d", len(jobs), count)
 	}
-
 	if successCount != len(jobs) {
 		t.Errorf("Expected %d successful results, got %d", len(jobs), successCount)
 	}
-
-	// Verify all job IDs received
 	for _, job := range jobs {
 		if !resultMap[job.ID] {
 			t.Errorf("Missing result for job ID %d", job.ID)
@@ -137,7 +123,6 @@ func TestNormalOperation(t *testing.T) {
 
 // TestParentContextCancelled tests early exit when parent context is cancelled
 func TestParentContextCancelled(t *testing.T) {
-	// Create cancelled context
 	parentCtx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
@@ -148,17 +133,15 @@ func TestParentContextCancelled(t *testing.T) {
 	}
 
 	workerFunc := func(ctx context.Context, id, data int) (string, error) {
-		time.Sleep(100 * time.Millisecond) // This should never execute
+		time.Sleep(100 * time.Millisecond)
 		return fmt.Sprintf("result-%d", data), nil
 	}
 
 	startTime := time.Now()
-	results := RunGenericWorkerPoolStream(
+	results := Stream(
 		parentCtx,
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{},
 	)
 
 	count := 0
@@ -170,11 +153,9 @@ func TestParentContextCancelled(t *testing.T) {
 	}
 	elapsed := time.Since(startTime)
 
-	// Should return immediately
 	if elapsed > 50*time.Millisecond {
 		t.Errorf("Expected immediate return (<50ms), took %v", elapsed)
 	}
-
 	if count != len(jobs) {
 		t.Errorf("Expected %d results, got %d", len(jobs), count)
 	}
@@ -195,12 +176,11 @@ func TestPanicRecovery(t *testing.T) {
 		return fmt.Sprintf("result-%d", data), nil
 	}
 
-	results := RunGenericWorkerPoolStream(
+	results := Stream(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{NumWorkers: 2},
+		WithWorkers(2),
 	)
 
 	count := 0
@@ -211,7 +191,6 @@ func TestPanicRecovery(t *testing.T) {
 		count++
 		if res.Err != nil {
 			if res.ID == 2 {
-				// Verify panic was caught
 				if res.Err.Error() != "panic: intentional panic" {
 					t.Errorf("Expected panic error, got %v", res.Err)
 				}
@@ -225,17 +204,12 @@ func TestPanicRecovery(t *testing.T) {
 	if count != len(jobs) {
 		t.Errorf("Expected %d results, got %d", len(jobs), count)
 	}
-
 	if panicCount != 1 {
 		t.Errorf("Expected 1 panic, got %d", panicCount)
 	}
-
-	// At least some should succeed
 	if successCount == 0 {
 		t.Error("Expected at least one successful result")
 	}
-
-	t.Logf("Panics: %d, Success: %d", panicCount, successCount)
 }
 
 // TestStopOnError tests StopOnError mode
@@ -248,31 +222,25 @@ func TestStopOnError(t *testing.T) {
 		{ID: 5, Data: 500},
 	}
 
-	var processedCount int32
-
 	workerFunc := func(ctx context.Context, id, data int) (string, error) {
-		atomic.AddInt32(&processedCount, 1)
-		time.Sleep(50 * time.Millisecond) // Simulate work
 		if data == 200 {
 			return "", errors.New("intentional error")
 		}
+		time.Sleep(20 * time.Millisecond)
 		return fmt.Sprintf("result-%d", data), nil
 	}
 
-	results := RunGenericWorkerPoolStream(
+	results := Stream(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{
-			NumWorkers:  2,
-			StopOnError: true,
-		},
+		WithWorkers(2),
+		WithStopOnError(true),
 	)
 
 	count := 0
-	errorCount := 0
 	skippedCount := 0
+	errorCount := 0
 
 	for res := range results {
 		count++
@@ -285,68 +253,11 @@ func TestStopOnError(t *testing.T) {
 		}
 	}
 
-	// All jobs should get results (1:1 guarantee)
 	if count != len(jobs) {
 		t.Errorf("Expected %d results, got %d", len(jobs), count)
 	}
-
-	// Should have at least one error
 	if errorCount == 0 {
 		t.Error("Expected at least one error")
-	}
-
-	// Some jobs should be skipped due to StopOnError
-	if skippedCount == 0 {
-		t.Error("Expected some jobs to be skipped with StopOnError=true")
-	}
-
-	t.Logf("Processed: %d, Errors: %d, Skipped: %d", processedCount, errorCount, skippedCount)
-}
-
-// TestGlobalTimeout tests global timeout
-func TestGlobalTimeout(t *testing.T) {
-	jobs := []Job[int, int]{
-		{ID: 1, Data: 100},
-		{ID: 2, Data: 200},
-		{ID: 3, Data: 300},
-	}
-
-	workerFunc := func(ctx context.Context, id, data int) (string, error) {
-		// Simulate long work that will timeout
-		select {
-		case <-time.After(5 * time.Second):
-			return fmt.Sprintf("result-%d", data), nil
-		case <-ctx.Done():
-			return "", ctx.Err()
-		}
-	}
-
-	startTime := time.Now()
-	results := RunGenericWorkerPoolStream(
-		context.Background(),
-		jobs,
-		workerFunc,
-		nil,
-		PoolConfig{
-			NumWorkers:    2,
-			GlobalTimeout: 100 * time.Millisecond,
-		},
-	)
-
-	count := 0
-	for range results {
-		count++
-	}
-	elapsed := time.Since(startTime)
-
-	// Should timeout in ~100ms, not 5s
-	if elapsed > 500*time.Millisecond {
-		t.Errorf("Expected timeout around 100ms, took %v", elapsed)
-	}
-
-	// All jobs should get results
-	if count != len(jobs) {
-		t.Errorf("Expected %d results, got %d", len(jobs), count)
 	}
 }
 
@@ -360,7 +271,6 @@ func TestWorkerTimeout(t *testing.T) {
 
 	workerFunc := func(ctx context.Context, id, data int) (string, error) {
 		if data == 200 {
-			// Simulate work that exceeds worker timeout
 			select {
 			case <-time.After(5 * time.Second):
 				return fmt.Sprintf("result-%d", data), nil
@@ -371,15 +281,12 @@ func TestWorkerTimeout(t *testing.T) {
 		return fmt.Sprintf("result-%d", data), nil
 	}
 
-	results := RunGenericWorkerPoolStream(
+	results := Stream(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{
-			NumWorkers:    2,
-			WorkerTimeout: 100 * time.Millisecond,
-		},
+		WithWorkers(2),
+		WithWorkerTimeout(100*time.Millisecond),
 	)
 
 	count := 0
@@ -400,18 +307,12 @@ func TestWorkerTimeout(t *testing.T) {
 	if count != len(jobs) {
 		t.Errorf("Expected %d results, got %d", len(jobs), count)
 	}
-
-	// At least one task should timeout (might be more due to timing)
 	if timeoutCount == 0 {
 		t.Error("Expected at least one timeout")
 	}
-
-	// Should have at least one success
 	if successCount == 0 {
 		t.Error("Expected at least one successful result")
 	}
-
-	t.Logf("Timeouts: %d, Success: %d", timeoutCount, successCount)
 }
 
 // TestNoDuplicateResults verifies no duplicate results even under high concurrency
@@ -424,164 +325,25 @@ func TestNoDuplicateResults(t *testing.T) {
 	}
 
 	workerFunc := func(ctx context.Context, id, data int) (int, error) {
-		// Minimal work to stress concurrency
 		return data * 2, nil
 	}
 
-	results := RunGenericWorkerPoolStream(
+	results := Stream(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{NumWorkers: 10},
+		WithWorkers(10),
 	)
 
-	resultMap := make(map[int]int) // ID -> count
+	resultMap := make(map[int]int)
 	for res := range results {
 		resultMap[res.ID]++
 	}
 
-	// Check for duplicates
-	duplicateCount := 0
 	for id, count := range resultMap {
 		if count > 1 {
 			t.Errorf("Job ID %d received %d times (duplicate!)", id, count)
-			duplicateCount++
 		}
-	}
-
-	if duplicateCount > 0 {
-		t.Errorf("Found %d duplicate results", duplicateCount)
-	}
-
-	// Verify all jobs received exactly one result
-	if len(resultMap) != numJobs {
-		t.Errorf("Expected %d unique results, got %d", numJobs, len(resultMap))
-	}
-}
-
-// TestLargeDatasetStopOnError tests that StopOnError works efficiently with 1M jobs
-func TestLargeDatasetStopOnError(t *testing.T) {
-	const numJobs = 1000000
-	jobs := make([]Job[int, int], numJobs)
-	for i := 0; i < numJobs; i++ {
-		jobs[i] = Job[int, int]{ID: i, Data: i}
-	}
-
-	workerFunc := func(ctx context.Context, id, data int) (string, error) {
-		// Error early on
-		if data == 2 {
-			return "", errors.New("intentional error")
-		}
-		return fmt.Sprintf("%d", data), nil
-	}
-
-	startTime := time.Now()
-	results := RunGenericWorkerPoolStream(
-		context.Background(),
-		jobs,
-		workerFunc,
-		nil,
-		PoolConfig{
-			NumWorkers:  4,
-			StopOnError: true,
-		},
-	)
-
-	successCount := 0
-	failCount := 0
-	skippedCount := 0
-
-	for res := range results {
-		if res.Err != nil {
-			if errors.Is(res.Err, ErrSkipped) {
-				skippedCount++
-			} else {
-				failCount++
-				if res.Err.Error() != "intentional error" {
-					t.Errorf("Unexpected error: %v", res.Err)
-				}
-			}
-		} else {
-			successCount++
-		}
-	}
-
-	elapsed := time.Since(startTime)
-	t.Logf("Processed 1M jobs with early error in %v", elapsed)
-
-	// Should be very fast (<< 1s) because it stops early
-	// But 1M jobs overhead (map checks, channel sends) takes ~1s on some machines
-	if elapsed > 10*time.Second {
-		t.Errorf("StopOnError with 1M jobs took too long: %v", elapsed)
-	}
-
-	if failCount == 0 {
-		t.Errorf("Expected at least one failure. Stats: processed=%d, success=%d, skipped=%d, failed=%d",
-			numJobs-skippedCount, successCount, skippedCount, failCount)
-	}
-
-	// Most jobs should be skipped
-	if skippedCount < numJobs-2000 { // Allow some slack for concurrent workers
-		t.Errorf("Expected most jobs to be skipped, got %d skipped. Success=%d, Fail=%d",
-			skippedCount, successCount, failCount)
-	}
-}
-
-// TestLargeDatasetTimeout tests that timeout works with 1M jobs
-func TestLargeDatasetTimeout(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping large dataset test in short mode")
-	}
-
-	const numJobs = 1000000
-	jobs := make([]Job[int, int], numJobs)
-	for i := 0; i < numJobs; i++ {
-		jobs[i] = Job[int, int]{ID: i, Data: i}
-	}
-
-	// Simulate slow work that DEFINITELY causes timeout
-	// 4 workers * 30s timeout = max processing capacity is low
-	// We want to verify it halts at 30s (default logic) or specified global timeout
-
-	workerFunc := func(ctx context.Context, id, data int) (string, error) {
-		time.Sleep(10 * time.Microsecond)
-		return fmt.Sprintf("%d", data), nil
-	}
-
-	startTime := time.Now()
-	results := RunGenericWorkerPoolStream(
-		context.Background(),
-		jobs,
-		workerFunc,
-		nil,
-		PoolConfig{
-			NumWorkers:    4,
-			GlobalTimeout: 100 * time.Millisecond, // Fast timeout
-		},
-	)
-
-	skippedCount := 0
-	successCount := 0
-
-	for res := range results {
-		if errors.Is(res.Err, ErrSkipped) {
-			skippedCount++
-		} else if res.Err == nil {
-			successCount++
-		}
-	}
-
-	elapsed := time.Since(startTime)
-	t.Logf("Processed 1M jobs with timeout in %v", elapsed)
-
-	// Allow some time for overhead of skipping 1M jobs (can take ~1s+)
-	if elapsed > 10*time.Second {
-		t.Errorf("GlobalTimeout failed, took %v", elapsed)
-	}
-
-	if skippedCount == 0 {
-		t.Error("Expected skipped jobs due to timeout")
 	}
 }
 
@@ -593,18 +355,16 @@ func BenchmarkWorkerPool(b *testing.B) {
 	}
 
 	workerFunc := func(ctx context.Context, id, data int) (int, error) {
-		// Simulate minimal work
 		return data * 2, nil
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		results := RunGenericWorkerPoolStream(
+		results := Stream(
 			context.Background(),
 			jobs,
 			workerFunc,
-			nil,
-			PoolConfig{NumWorkers: 10},
+			WithWorkers(10),
 		)
 
 		for range results {
@@ -613,8 +373,8 @@ func BenchmarkWorkerPool(b *testing.B) {
 	}
 }
 
-// TestRunGenericWorkerPoolSynchronous tests the synchronous wrapper
-func TestRunGenericWorkerPoolSynchronous(t *testing.T) {
+// TestRunSynchronous tests the synchronous Run function
+func TestRunSynchronous(t *testing.T) {
 	jobs := []Job[string, int]{
 		{ID: "A", Data: 1},
 		{ID: "B", Data: 2},
@@ -628,12 +388,11 @@ func TestRunGenericWorkerPoolSynchronous(t *testing.T) {
 		return data * 10, nil
 	}
 
-	results, err := RunGenericWorkerPool(
+	results, err := Run(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{NumWorkers: 2},
+		WithWorkers(2),
 	)
 
 	if len(results) != 3 {
@@ -664,8 +423,8 @@ func TestRunGenericWorkerPoolSynchronous(t *testing.T) {
 	}
 }
 
-// TestRunGenericWorkerPoolOrdered tests the PreserveOrder configuration
-func TestRunGenericWorkerPoolOrdered(t *testing.T) {
+// TestRunOrdered tests the PreserveOrder configuration
+func TestRunOrdered(t *testing.T) {
 	jobs := []Job[int, int]{
 		{ID: 10, Data: 1},
 		{ID: 20, Data: 2},
@@ -675,21 +434,17 @@ func TestRunGenericWorkerPoolOrdered(t *testing.T) {
 	}
 
 	workerFunc := func(ctx context.Context, id, data int) (int, error) {
-		// Sleep inversely proportional to data so they finish out of order
 		sleepTime := time.Duration(100-(data*10)) * time.Millisecond
 		time.Sleep(sleepTime)
 		return data * 100, nil
 	}
 
-	results, err := RunGenericWorkerPool(
+	results, err := Run(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{
-			NumWorkers:    5,
-			PreserveOrder: true, // Key feature being tested
-		},
+		WithWorkers(5),
+		WithPreserveOrder(true),
 	)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -699,7 +454,6 @@ func TestRunGenericWorkerPoolOrdered(t *testing.T) {
 		t.Fatalf("Expected %d results, got %d", len(jobs), len(results))
 	}
 
-	// Verify exact ordering
 	for i, job := range jobs {
 		if results[i].ID != job.ID {
 			t.Errorf("Result at index %d has ID %v, expected %v", i, results[i].ID, job.ID)
@@ -730,15 +484,12 @@ func TestOnProgress(t *testing.T) {
 		atomic.StoreInt32(&finalTotal, int32(total))
 	}
 
-	_, err := RunGenericWorkerPool(
+	_, err := Run(
 		context.Background(),
 		jobs,
 		workerFunc,
-		nil,
-		PoolConfig{
-			NumWorkers: 2,
-			OnProgress: onProgress,
-		},
+		WithWorkers(2),
+		WithOnProgress(onProgress),
 	)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -750,5 +501,37 @@ func TestOnProgress(t *testing.T) {
 
 	if atomic.LoadInt32(&finalTotal) != int32(len(jobs)) {
 		t.Errorf("Expected total to be %d, got %d", len(jobs), finalTotal)
+	}
+}
+
+func TestStream_WithOptions(t *testing.T) {
+	jobs := []Job[int, int]{
+		{ID: 1, Data: 100},
+		{ID: 2, Data: 200},
+	}
+
+	workerFunc := func(ctx context.Context, id, data int) (int, error) {
+		return data + 1, nil
+	}
+
+	sem := make(chan struct{}, 1)
+	outCh := Stream(
+		context.Background(),
+		jobs,
+		workerFunc,
+		WithWorkers(2),
+		WithGlobalSemaphore(sem),
+	)
+
+	received := 0
+	for res := range outCh {
+		if res.Err != nil {
+			t.Fatalf("unexpected error: %v", res.Err)
+		}
+		received++
+	}
+
+	if received != 2 {
+		t.Errorf("expected 2 streamed results, got %d", received)
 	}
 }

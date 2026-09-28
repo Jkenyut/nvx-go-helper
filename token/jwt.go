@@ -26,7 +26,44 @@ var (
 	ErrInvalidSignature = errors.New("invalid token signature")
 	// ErrNilKey is returned when a nil private or public key is provided.
 	ErrNilKey = errors.New("cryptographic key cannot be nil")
+	// ErrIssuerMismatch is returned when the token issuer does not match the expected issuer.
+	ErrIssuerMismatch = errors.New("token issuer mismatch")
+	// ErrAudienceMismatch is returned when the token audience does not match the expected audience.
+	ErrAudienceMismatch = errors.New("token audience mismatch")
 )
+
+type verifyOptions struct {
+	clockSkew        time.Duration
+	expectedIssuer   string
+	expectedAudience string
+}
+
+// VerifyOption configures token verification behavior.
+type VerifyOption func(*verifyOptions)
+
+// WithClockSkew configures a leeway duration when checking ExpiresAt and NotBefore.
+// Useful for accommodating small clock synchronization differences between distributed servers.
+func WithClockSkew(d time.Duration) VerifyOption {
+	return func(o *verifyOptions) {
+		if d > 0 {
+			o.clockSkew = d
+		}
+	}
+}
+
+// WithExpectedIssuer verifies that the token's 'iss' claim matches the expected issuer string.
+func WithExpectedIssuer(issuer string) VerifyOption {
+	return func(o *verifyOptions) {
+		o.expectedIssuer = strings.TrimSpace(issuer)
+	}
+}
+
+// WithExpectedAudience verifies that the token's 'aud' claim matches the expected audience string.
+func WithExpectedAudience(aud string) VerifyOption {
+	return func(o *verifyOptions) {
+		o.expectedAudience = strings.TrimSpace(aud)
+	}
+}
 
 // StandardClaims is a type alias for standard RFC 7519 registered claims without custom data payload.
 type StandardClaims = JWTClaims[any]
@@ -92,9 +129,15 @@ func GenerateES256JWT[T any](privKey *ecdsa.PrivateKey, claims JWTClaims[T]) (st
 
 // VerifyES256JWT validates the signature, expiration, and format of an ES256 JWT using an ECDSA P-256 public key,
 // and unmarshals the payload directly into a type-safe *JWTClaims[T].
-func VerifyES256JWT[T any](pubKey *ecdsa.PublicKey, tokenString string) (*JWTClaims[T], error) {
+// Optional VerifyOptions can be passed to configure clock skew leeway, expected issuer, and audience.
+func VerifyES256JWT[T any](pubKey *ecdsa.PublicKey, tokenString string, opts ...VerifyOption) (*JWTClaims[T], error) {
 	if pubKey == nil {
 		return nil, ErrNilKey
+	}
+
+	var opt verifyOptions
+	for _, fn := range opts {
+		fn(&opt)
 	}
 
 	parts := strings.Split(tokenString, ".")
@@ -137,11 +180,21 @@ func VerifyES256JWT[T any](pubKey *ecdsa.PublicKey, tokenString string) (*JWTCla
 	}
 
 	now := time.Now().Unix()
-	if claims.ExpiresAt > 0 && now > claims.ExpiresAt {
+	skewSec := int64(opt.clockSkew / time.Second)
+
+	if claims.ExpiresAt > 0 && now-skewSec > claims.ExpiresAt {
 		return nil, ErrTokenExpired
 	}
-	if claims.NotBefore > 0 && now < claims.NotBefore {
+	if claims.NotBefore > 0 && now+skewSec < claims.NotBefore {
 		return nil, ErrTokenNotValidYet
+	}
+
+	if opt.expectedIssuer != "" && claims.Issuer != opt.expectedIssuer {
+		return nil, ErrIssuerMismatch
+	}
+
+	if opt.expectedAudience != "" && claims.Audience != opt.expectedAudience {
+		return nil, ErrAudienceMismatch
 	}
 
 	return &claims, nil

@@ -1,12 +1,8 @@
 // Package worker provides a generic, concurrent worker pool implementation
-// with cancellation, timeouts, and ordered result streaming.
+// with cancellation, timeouts, order preservation, and streaming results.
 //
-// It is designed for processing large batches of jobs (e.g., CSV imports,
-// data migrations, bulk API calls) where:
-//   - Concurrency is needed for speed
-//   - Results must be mapped 1:1 to inputs
-//   - Global and per-job timeouts are required
-//   - Panics must be caught safely
+// It is designed for processing batches of jobs (e.g., bulk API calls, migrations)
+// with idiomatic functional options, panic recovery, and bounded concurrency.
 package worker
 
 import (
@@ -34,39 +30,108 @@ type Result[K comparable, R any] struct {
 	Err   error // Error result (if any) or panic error
 }
 
-// PoolConfig holds configuration options for the worker pool.
-type PoolConfig struct {
-	NumWorkers    int                        // Concurrent workers count (default: 2)
-	WorkerTimeout time.Duration              // Timeout for a single job execution (default: 15s)
-	GlobalTimeout time.Duration              // Total timeout for the entire batch (default: 30s)
-	StopOnError   bool                       // If true, the pool shuts down on the first error
-	PreserveOrder bool                       // If true, RunGenericWorkerPool returns results in the exact order of input jobs
-	OnProgress    func(completed, total int) // Optional callback for progress tracking
+type config struct {
+	numWorkers      int
+	workerTimeout   time.Duration
+	globalTimeout   time.Duration
+	stopOnError     bool
+	preserveOrder   bool
+	onProgress      func(completed, total int)
+	globalSemaphore chan struct{}
+}
+
+// Option configures worker pool behavior.
+type Option func(*config)
+
+// WithWorkers sets the number of concurrent workers (default: 2).
+func WithWorkers(num int) Option {
+	return func(c *config) {
+		c.numWorkers = num
+	}
+}
+
+// WithWorkerTimeout sets the execution timeout per job (default: 15s).
+func WithWorkerTimeout(d time.Duration) Option {
+	return func(c *config) {
+		c.workerTimeout = d
+	}
+}
+
+// WithGlobalTimeout sets the total timeout for the entire batch (default: 30s).
+func WithGlobalTimeout(d time.Duration) Option {
+	return func(c *config) {
+		c.globalTimeout = d
+	}
+}
+
+// WithStopOnError configures the pool to cancel on the first encountered error.
+func WithStopOnError(stop bool) Option {
+	return func(c *config) {
+		c.stopOnError = stop
+	}
+}
+
+// WithPreserveOrder configures whether results are returned strictly in the input jobs order.
+func WithPreserveOrder(preserve bool) Option {
+	return func(c *config) {
+		c.preserveOrder = preserve
+	}
+}
+
+// WithOnProgress sets a progress reporting callback invoked upon each completed job.
+func WithOnProgress(fn func(completed, total int)) Option {
+	return func(c *config) {
+		c.onProgress = fn
+	}
+}
+
+// WithGlobalSemaphore provides an optional shared semaphore across multiple worker pools.
+func WithGlobalSemaphore(sem chan struct{}) Option {
+	return func(c *config) {
+		c.globalSemaphore = sem
+	}
+}
+
+func defaultConfig(opts ...Option) config {
+	cfg := config{
+		numWorkers:    2,
+		workerTimeout: 15 * time.Second,
+		globalTimeout: 30 * time.Second,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	if cfg.numWorkers <= 0 {
+		cfg.numWorkers = 2
+	}
+	if cfg.globalTimeout == 0 {
+		cfg.globalTimeout = 30 * time.Second
+	}
+	if cfg.workerTimeout == 0 {
+		cfg.workerTimeout = 15 * time.Second
+	}
+	if cfg.workerTimeout > 0 && cfg.globalTimeout > 0 && cfg.workerTimeout > cfg.globalTimeout {
+		cfg.workerTimeout = cfg.globalTimeout
+	}
+
+	return cfg
 }
 
 // ErrSkipped indicates a job was not processed because the pool was cancelled/timed out,
-// or a previous job failed (if StopOnError is true).
+// or a previous job failed (if WithStopOnError is enabled).
 var ErrSkipped = fmt.Errorf("job not processed (cancelled or skipped)")
 
-// RunGenericWorkerPoolStream executes a batch of jobs concurrently and streams results.
-//
-// Key features:
-//   - **Ordered Results**: Results are NOT guaranteed to be in order, but each Result contains the ID of the source Job.
-//   - **Concurrency Control**: Use cfg.NumWorkers to limit parallelism.
-//   - **Timeouts**: Enforces both GlobalTimeout (whole batch) and WorkerTimeout (per item).
-//   - **Safety**: Recovers from panics in worker function to prevent crash.
-//
-// The workerFunc must accept a context (which respects timeouts) and the job data.
-// It returns the result R and an error.
-//
-// Returns a read-only channel of Results. The channel is closed when all jobs are finished or timed out.
-func RunGenericWorkerPoolStream[K comparable, T any, R any](
+// Stream executes a batch of jobs concurrently using functional options and streams results.
+// The channel is closed when all jobs are completed, failed, or cancelled.
+func Stream[K comparable, T any, R any](
 	ctx context.Context,
 	jobs []Job[K, T],
 	workerFunc func(context.Context, K, T) (R, error),
-	globalSemaphore chan struct{},
-	cfg PoolConfig,
+	opts ...Option,
 ) <-chan Result[K, R] {
+	cfg := defaultConfig(opts...)
+
 	if len(jobs) == 0 {
 		outCh := make(chan Result[K, R])
 		close(outCh)
@@ -108,35 +173,15 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 	default:
 	}
 
-	// Apply configuration defaults
-	if cfg.NumWorkers <= 0 {
-		cfg.NumWorkers = 2
-	}
-
-	if cfg.GlobalTimeout == 0 {
-		cfg.GlobalTimeout = 30 * time.Second
-	}
-
-	if cfg.WorkerTimeout == 0 {
-		cfg.WorkerTimeout = 15 * time.Second
-	}
-
-	if cfg.WorkerTimeout > 0 && cfg.GlobalTimeout > 0 && cfg.WorkerTimeout > cfg.GlobalTimeout {
-		cfg.WorkerTimeout = cfg.GlobalTimeout
-	}
-
 	outCh := make(chan Result[K, R], len(jobs))
 	jobCh := make(chan Job[K, T])
 
-	var poolCtx context.Context
-	var cancelPool context.CancelCauseFunc
-
-	poolCtx, cancelPool = context.WithCancelCause(ctx)
+	poolCtx, cancelPool := context.WithCancelCause(ctx)
 
 	var timeoutTimer *time.Timer
-	if cfg.GlobalTimeout >= 0 {
-		timeoutTimer = time.AfterFunc(cfg.GlobalTimeout, func() {
-			cancelPool(fmt.Errorf("global timeout of %v exceeded", cfg.GlobalTimeout))
+	if cfg.globalTimeout >= 0 {
+		timeoutTimer = time.AfterFunc(cfg.globalTimeout, func() {
+			cancelPool(fmt.Errorf("global timeout of %v exceeded", cfg.globalTimeout))
 		})
 	}
 
@@ -162,8 +207,8 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 	}
 
 	// Worker goroutines
-	workerWG.Add(cfg.NumWorkers)
-	for i := 0; i < cfg.NumWorkers; i++ {
+	workerWG.Add(cfg.numWorkers)
+	for i := 0; i < cfg.numWorkers; i++ {
 		go func() {
 			defer workerWG.Done()
 
@@ -177,9 +222,9 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 				}
 
 				// Acquire external semaphore if provided
-				if globalSemaphore != nil {
+				if cfg.globalSemaphore != nil {
 					select {
-					case globalSemaphore <- struct{}{}:
+					case cfg.globalSemaphore <- struct{}{}:
 					case <-poolCtx.Done():
 						sendResult(Result[K, R]{ID: job.ID, Err: getSkipErr()})
 						continue
@@ -187,15 +232,15 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 				}
 
 				func() {
-					if globalSemaphore != nil {
-						defer func() { <-globalSemaphore }()
+					if cfg.globalSemaphore != nil {
+						defer func() { <-cfg.globalSemaphore }()
 					}
 
 					defer func() {
 						if r := recover(); r != nil {
 							panicErr := fmt.Errorf("panic: %v", r)
 							sendResult(Result[K, R]{ID: job.ID, Err: panicErr})
-							if cfg.StopOnError {
+							if cfg.stopOnError {
 								safeCancelPool(fmt.Errorf("panic in job %v: %v", job.ID, r))
 							}
 						}
@@ -203,16 +248,16 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 
 					var taskCtx context.Context
 					var cancel context.CancelFunc
-					if cfg.WorkerTimeout < 0 {
+					if cfg.workerTimeout < 0 {
 						taskCtx, cancel = context.WithCancel(poolCtx)
 					} else {
-						taskCtx, cancel = context.WithTimeoutCause(poolCtx, cfg.WorkerTimeout, fmt.Errorf("worker timeout of %v exceeded", cfg.WorkerTimeout))
+						taskCtx, cancel = context.WithTimeoutCause(poolCtx, cfg.workerTimeout, fmt.Errorf("worker timeout of %v exceeded", cfg.workerTimeout))
 					}
 					defer cancel()
 
 					res, err := workerFunc(taskCtx, job.ID, job.Data)
 
-					if err != nil && cfg.StopOnError {
+					if err != nil && cfg.stopOnError {
 						safeCancelPool(fmt.Errorf("error in job %v: %w", job.ID, err))
 					}
 
@@ -244,30 +289,30 @@ func RunGenericWorkerPoolStream[K comparable, T any, R any](
 		if timeoutTimer != nil {
 			timeoutTimer.Stop()
 		}
-		cancelPool(nil) // Ensure cleanup
+		cancelPool(nil)
 		close(outCh)
 	}()
 
 	return outCh
 }
 
-// RunGenericWorkerPool executes a batch of jobs concurrently and waits for all of them to complete.
+// Run executes a batch of jobs concurrently with functional options and waits for all of them to complete.
 // It returns a slice of all results and an aggregated error if any job failed.
-func RunGenericWorkerPool[K comparable, T any, R any](
+func Run[K comparable, T any, R any](
 	ctx context.Context,
 	jobs []Job[K, T],
 	workerFunc func(context.Context, K, T) (R, error),
-	globalSemaphore chan struct{},
-	cfg PoolConfig,
+	opts ...Option,
 ) ([]Result[K, R], error) {
-	outCh := RunGenericWorkerPoolStream(ctx, jobs, workerFunc, globalSemaphore, cfg)
+	cfg := defaultConfig(opts...)
+	outCh := Stream(ctx, jobs, workerFunc, opts...)
 
 	var results []Result[K, R]
 	var errs []error
 	var completed int
 	total := len(jobs)
 
-	if cfg.PreserveOrder {
+	if cfg.preserveOrder {
 		results = make([]Result[K, R], len(jobs))
 		indexMap := make(map[K]int, len(jobs))
 		for i, job := range jobs {
@@ -280,9 +325,9 @@ func RunGenericWorkerPool[K comparable, T any, R any](
 			if res.Err != nil {
 				errs = append(errs, res.Err)
 			}
-			if cfg.OnProgress != nil {
+			if cfg.onProgress != nil {
 				completed++
-				cfg.OnProgress(completed, total)
+				cfg.onProgress(completed, total)
 			}
 		}
 	} else {
@@ -292,9 +337,9 @@ func RunGenericWorkerPool[K comparable, T any, R any](
 			if res.Err != nil {
 				errs = append(errs, res.Err)
 			}
-			if cfg.OnProgress != nil {
+			if cfg.onProgress != nil {
 				completed++
-				cfg.OnProgress(completed, total)
+				cfg.onProgress(completed, total)
 			}
 		}
 	}
