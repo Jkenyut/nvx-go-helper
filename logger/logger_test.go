@@ -1,16 +1,19 @@
 package logger
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 
-	"bytes"
 	"github.com/Jkenyut/nvx-go-helper/activity"
+	"github.com/bytedance/sonic"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/trace"
-	"strings"
 )
 
 func TestInitFromConfig_Environments(t *testing.T) {
@@ -235,3 +238,53 @@ func TestActivityHook(t *testing.T) {
 		}
 	})
 }
+
+func TestSlogRawJSON(t *testing.T) {
+	var buf bytes.Buffer
+	log := zerolog.New(&buf)
+	slogHandler := &zerologSlogHandler{logger: &log}
+	slogger := slog.New(slogHandler)
+
+	rawPayload := []byte(`{"user":"alex","roles":["admin","editor"]}`)
+	slogger.Info("event with json", slog.Any("payload", rawPayload))
+
+	out := buf.String()
+	// Should be valid embedded JSON, not escaped or byte slice
+	if !strings.Contains(out, `"payload":{"user":"alex","roles":["admin","editor"]}`) {
+		t.Fatalf("expected embedded raw JSON in output, got: %s", out)
+	}
+}
+
+func TestConsoleWriter_JSONFormatting(t *testing.T) {
+	var buf bytes.Buffer
+	cw := zerolog.ConsoleWriter{
+		Out:     &buf,
+		NoColor: true,
+		FormatFieldValue: func(i any) string {
+			switch v := i.(type) {
+			case []byte:
+				return string(v)
+			case json.RawMessage:
+				return string(v)
+			case map[string]any, []any, map[string]string:
+				if b, err := sonic.Marshal(v); err == nil {
+					return string(b)
+				}
+			}
+			return fmt.Sprintf("%v", i)
+		},
+	}
+
+	log := zerolog.New(cw)
+	log.Info().Interface("data", map[string]any{"key": "value", "count": 10}).Msg("testing console writer")
+
+	out := buf.String()
+	// Should NOT contain map[key:value count:10]
+	if strings.Contains(out, "map[") {
+		t.Errorf("expected json formatted field, but got Go map syntax: %s", out)
+	}
+	if !strings.Contains(out, `"key":"value"`) {
+		t.Errorf("expected json output in console writer, got: %s", out)
+	}
+}
+

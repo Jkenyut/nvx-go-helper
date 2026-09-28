@@ -3,6 +3,7 @@
 package validator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -19,14 +20,24 @@ type Validator interface {
 	// Struct validates a struct and returns the first error encountered, or nil.
 	Struct(s any) error
 
+	// StructCtx validates a struct with context support (e.g. for cancellation or contextual validation).
+	StructCtx(ctx context.Context, s any) error
+
 	// Var validates a single variable against a tag.
 	Var(field any, tag string) error
+
+	// VarCtx validates a single variable against a tag with context support.
+	VarCtx(ctx context.Context, field any, tag string) error
 
 	// RegisterCustomValidation registers a custom validation tag and its human-readable error message.
 	RegisterCustomValidation(tag string, fn validator.Func, customMsg string) error
 
 	// GetErrors returns the raw validator.ValidationErrors.
 	GetErrors(err error) validator.ValidationErrors
+
+	// GetErrorsMap returns validation errors translated into a map of field name to user-friendly message.
+	// This format is optimal for REST API JSON responses (e.g. 422 Unprocessable Entity payload).
+	GetErrorsMap(err error) map[string]string
 
 	// GetErrorsFullStr returns the full validation errors in a single comma-separated string.
 	GetErrorsFullStr(err error) string
@@ -86,9 +97,19 @@ func (w *wrapper) Struct(s any) error {
 	return w.v.Struct(s)
 }
 
+// StructCtx validates a struct with context support.
+func (w *wrapper) StructCtx(ctx context.Context, s any) error {
+	return w.v.StructCtx(ctx, s)
+}
+
 // Var validates a single variable.
 func (w *wrapper) Var(field any, tag string) error {
 	return w.v.Var(field, tag)
+}
+
+// VarCtx validates a single variable with context support.
+func (w *wrapper) VarCtx(ctx context.Context, field any, tag string) error {
+	return w.v.VarCtx(ctx, field, tag)
 }
 
 // RegisterCustomValidation registers a custom validation tag and its human-readable error message.
@@ -114,6 +135,33 @@ func (w *wrapper) GetErrors(err error) validator.ValidationErrors {
 		return errs
 	}
 	return nil
+}
+
+// GetErrorsMap returns validation errors translated into a map of field name to user-friendly message.
+// If the error is not a validator.ValidationErrors, it returns a map with a single "error" key.
+// Returns nil if err is nil.
+func (w *wrapper) GetErrorsMap(err error) map[string]string {
+	if err == nil {
+		return nil
+	}
+
+	var valErrs validator.ValidationErrors
+	if !errors.As(err, &valErrs) {
+		return map[string]string{"error": err.Error()}
+	}
+
+	if len(valErrs) == 0 {
+		return make(map[string]string)
+	}
+
+	errMap := make(map[string]string, len(valErrs))
+	for _, e := range valErrs {
+		// Only store the first validation error encountered per field to keep errors clean
+		if _, exists := errMap[e.Field()]; !exists {
+			errMap[e.Field()] = w.msgForTag(e)
+		}
+	}
+	return errMap
 }
 
 // GetErrorsFullStr returns the full validation errors.
@@ -243,6 +291,22 @@ func (w *wrapper) msgForTag(fe validator.FieldError) string {
 		return "Must be a valid Indonesian NPWP"
 	case "phone_id":
 		return "Must be a valid Indonesian phone number"
+	case "latitude":
+		return "Must be a valid latitude coordinate (-90 to 90)"
+	case "longitude":
+		return "Must be a valid longitude coordinate (-180 to 180)"
+	case "semver":
+		return "Must be a valid semantic version (SemVer)"
+	case "timezone":
+		return "Must be a valid timezone identifier"
+	case "ulid":
+		return "Must be a valid ULID"
+	case "cron":
+		return "Must be a valid cron expression"
+	case "iso3166_1_alpha2":
+		return "Must be a valid two-letter country code (ISO 3166-1 alpha-2)"
+	case "iso4217":
+		return "Must be a valid currency code (ISO 4217)"
 	default:
 		return fmt.Sprintf("Failed on %s validation", fe.Tag())
 	}
@@ -312,9 +376,19 @@ func Struct(s any) error {
 	return Get().Struct(s)
 }
 
+// StructCtx validates a struct with context support using the global validator.
+func StructCtx(ctx context.Context, s any) error {
+	return Get().StructCtx(ctx, s)
+}
+
 // Var validates a single variable using the global validator.
 func Var(field any, tag string) error {
 	return Get().Var(field, tag)
+}
+
+// VarCtx validates a single variable with context support using the global validator.
+func VarCtx(ctx context.Context, field any, tag string) error {
+	return Get().VarCtx(ctx, field, tag)
 }
 
 // RegisterCustomValidation registers a custom validation tag to the global validator.
@@ -325,6 +399,11 @@ func RegisterCustomValidation(tag string, fn validator.Func, customMsg string) e
 // GetErrors returns the validation errors from a validator error using the global validator.
 func GetErrors(err error) validator.ValidationErrors {
 	return Get().GetErrors(err)
+}
+
+// GetErrorsMap returns validation errors translated into a map of field name to user-friendly message using the global validator.
+func GetErrorsMap(err error) map[string]string {
+	return Get().GetErrorsMap(err)
 }
 
 // GetErrorsFullStr returns the full validation errors using the global validator.

@@ -1,134 +1,208 @@
 package cryptoutil
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
 
-// ============================================
-// PARAMETERS FOR ARGON2ID
-// ============================================
-
-// Low Resource (Small Servers: 512MB-1GB RAM, 1-2 CPU cores)
-const (
-	DefaultTime    = 1         // 1 iteration (fast)
-	DefaultMemory  = 32 * 1024 // 32 MB (low memory usage)
-	DefaultThreads = 2         // 2 threads (for dual-core)
-	DefaultKeyLen  = 32        // 256 bits (standard)
+// Common errors returned when validating Argon2 hashes.
+var (
+	// ErrInvalidHash indicates that the provided hash string is not a valid Argon2 PHC formatted string.
+	ErrInvalidHash = errors.New("cryptoutil: invalid Argon2 PHC string format")
+	// ErrIncompatibleVariant indicates that the hash does not use the argon2id algorithm variant.
+	ErrIncompatibleVariant = errors.New("cryptoutil: incompatible variant, expected argon2id")
+	// ErrIncompatibleVersion indicates that the hash version is not supported by this library.
+	ErrIncompatibleVersion = errors.New("cryptoutil: incompatible or unparseable argon2 version")
+	// ErrInvalidParams indicates that one or more Argon2 parameters are invalid or out of safe bounds.
+	ErrInvalidParams = errors.New("cryptoutil: invalid memory, time, or parallelism parameters")
 )
 
-// Medium Resource (Medium Servers: 2-4GB RAM, 2-4 CPU cores)
-const (
-	MediumTime    = 2
-	MediumMemory  = 64 * 1024 // 64 MB
-	MediumThreads = 4
-	MediumKeyLen  = 32
+// Params defines the configuration parameters used by Argon2id.
+type Params struct {
+	Memory      uint32 // Memory usage in KiB
+	Iterations  uint32 // Number of passes over memory (Time)
+	Parallelism uint8  // Number of parallel threads/lanes
+	SaltLength  uint32 // Salt length in bytes (standard: 16)
+	KeyLength   uint32 // Derived tag length in bytes (standard: 32)
+}
+
+// Industry Standard Presets (RFC 9106 & OWASP)
+var (
+	// DefaultParams (RFC 9106 First Recommended / OWASP Primary)
+	// Recommended standard for production web applications and APIs.
+	DefaultParams = Params{
+		Memory:      64 * 1024, // 64 MiB
+		Iterations:  1,
+		Parallelism: 4,
+		SaltLength:  16,
+		KeyLength:   32,
+	}
+
+	// LowResourceParams (OWASP Constrained)
+	// Lower bound for micro-VMs, AWS Lambda, or containers with <= 1GB RAM.
+	LowResourceParams = Params{
+		Memory:      19 * 1024, // 19 MiB
+		Iterations:  2,
+		Parallelism: 1,
+		SaltLength:  16,
+		KeyLength:   32,
+	}
+
+	// HighSecurityParams (OWASP High-Security Preset)
+	// For dedicated authentication servers targeting higher compute cost (~250-500ms).
+	HighSecurityParams = Params{
+		Memory:      64 * 1024, // 64 MiB
+		Iterations:  3,
+		Parallelism: 4,
+		SaltLength:  16,
+		KeyLength:   32,
+	}
 )
 
-// High Resource (Large Servers: 8GB+ RAM, 4+ CPU cores)
-const (
-	HighTime    = 3
-	HighMemory  = 256 * 1024 // 256 MB
-	HighThreads = 8
-	HighKeyLen  = 32
-)
-
-// ============================================
-// BEST PRACTICE: SINGLE COLUMN (PHC FORMAT)
-// ============================================
-
-// HashPassword hashes a password using LOW RESOURCE settings (default).
-// Returns a standard PHC format string containing the algorithm, version, parameters, salt, and hash.
-// Example: $argon2id$v=19$m=32768,t=1,p=2$c2FsdA$aGFzaA
+// HashPassword hashes a plaintext password using the default production parameters (RFC 9106).
 func HashPassword(password string) (string, error) {
-	return hashPasswordParams(password, DefaultTime, DefaultMemory, DefaultThreads, DefaultKeyLen)
+	return HashPasswordCustom(password, DefaultParams)
 }
 
-// HashPasswordMedium hashes a password using MEDIUM RESOURCE settings.
-// Good for production servers.
-func HashPasswordMedium(password string) (string, error) {
-	return hashPasswordParams(password, MediumTime, MediumMemory, MediumThreads, MediumKeyLen)
+// HashPasswordLow hashes a plaintext password using low-resource parameters (e.g. for micro-VMs or AWS Lambda).
+func HashPasswordLow(password string) (string, error) {
+	return HashPasswordCustom(password, LowResourceParams)
 }
 
-// HashPasswordHigh hashes a password using HIGH RESOURCE settings.
-// Good for high-security applications.
+// HashPasswordHigh hashes a plaintext password using high-security parameters.
 func HashPasswordHigh(password string) (string, error) {
-	return hashPasswordParams(password, HighTime, HighMemory, HighThreads, HighKeyLen)
+	return HashPasswordCustom(password, HighSecurityParams)
 }
 
-// HashPasswordCustom hashes a password using custom resource settings provided by the developer.
-// Use this if you need to fine-tune the Argon2 parameters according to your server specs.
-func HashPasswordCustom(password string, time, memory uint32, threads uint8, keyLen uint32) (string, error) {
-	return hashPasswordParams(password, time, memory, threads, keyLen)
+// HashPasswordCustom hashes a plaintext password using specific Argon2id parameters.
+func HashPasswordCustom(password string, p Params) (string, error) {
+	salt := make([]byte, p.SaltLength)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("cryptoutil: failed to generate secure salt: %w", err)
+	}
+
+	hash := argon2.IDKey([]byte(password), salt, p.Iterations, p.Memory, p.Parallelism, p.KeyLength)
+
+	// Encode to unpadded base64 (RawStdEncoding per PHC string specification)
+	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
+	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
+
+	// Format: $argon2id$v=19$m=65536,t=1,p=4$<salt>$<hash>
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, p.Memory, p.Iterations, p.Parallelism, b64Salt, b64Hash), nil
 }
 
-// VerifyPassword compares a plaintext password against a PHC formatted Argon2 hash string.
-// It automatically extracts the correct salt, memory, time, and thread settings from the string
-// ensuring that you don't need to guess which settings were used to create the hash.
+// VerifyPassword securely compares a plaintext password against a PHC-formatted Argon2 hash.
+// It extracts the original salt and cost parameters from the string, preventing mismatch.
 func VerifyPassword(password, encodedHash string) (bool, error) {
-	// Format: $argon2id$v=19$m=65536,t=2,p=1$c2FsdA$aGFzaA
-	vals := strings.Split(encodedHash, "$")
-	if len(vals) != 6 {
-		return false, errors.New("invalid hash format (must be PHC standard)")
-	}
-
-	if vals[1] != "argon2id" {
-		return false, errors.New("incompatible variant, expected argon2id")
-	}
-
-	var version int
-	_, err := fmt.Sscanf(vals[2], "v=%d", &version)
-	if err != nil || version != argon2.Version {
-		return false, errors.New("incompatible or unparseable version")
-	}
-
-	var memory, time uint32
-	var threads uint8
-	_, err = fmt.Sscanf(vals[3], "m=%d,t=%d,p=%d", &memory, &time, &threads)
+	params, salt, hash, err := decodePHCHash(encodedHash)
 	if err != nil {
-		return false, errors.New("invalid parameter format")
+		return false, err
 	}
 
-	saltBytes, err := base64.RawStdEncoding.DecodeString(vals[4])
-	if err != nil {
-		return false, fmt.Errorf("error decoding salt: %w", err)
-	}
+	derivedKey := argon2.IDKey(
+		[]byte(password),
+		salt,
+		params.Iterations,
+		params.Memory,
+		params.Parallelism,
+		uint32(len(hash)),
+	)
 
-	hashBytes, err := base64.RawStdEncoding.DecodeString(vals[5])
-	if err != nil {
-		return false, fmt.Errorf("error decoding hash: %w", err)
-	}
-
-	// Derive key with extracted parameters
-	derivedKey := argon2.IDKey([]byte(password), saltBytes, time, memory, threads, uint32(len(hashBytes)))
-
-	// Secure comparison to prevent timing attacks
-	if subtle.ConstantTimeCompare(derivedKey, hashBytes) == 1 {
+	// Constant-time comparison prevents timing side-channel attacks
+	if subtle.ConstantTimeCompare(derivedKey, hash) == 1 {
 		return true, nil
 	}
+
 	return false, nil
 }
 
-// hashPasswordParams is the core implementation for generating PHC formatted strings.
-func hashPasswordParams(password string, time, memory uint32, threads uint8, keyLen uint32) (string, error) {
-	// Generate 16 byte salt (standard recommendation for Argon2)
-	saltBytes, err := GenerateKeyRaw(16)
+// NeedsRehash checks whether the encoded hash was created using different parameters
+// than target, signaling that the password should be re-hashed on the next successful authentication.
+func NeedsRehash(encodedHash string, target Params) (bool, error) {
+	params, _, _, err := decodePHCHash(encodedHash)
 	if err != nil {
-		return "", fmt.Errorf("generate salt: %w", err)
+		return false, err
 	}
 
-	hash := argon2.IDKey([]byte(password), saltBytes, time, memory, threads, keyLen)
+	if params.Memory != target.Memory ||
+		params.Iterations != target.Iterations ||
+		params.Parallelism != target.Parallelism ||
+		params.KeyLength != target.KeyLength {
+		return true, nil
+	}
 
-	// Encode to base64 (Raw encoding without '=' padding is the standard for PHC format)
-	b64Salt := base64.RawStdEncoding.EncodeToString(saltBytes)
-	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
+	return false, nil
+}
 
-	// Combine into a single string
-	encoded := fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, memory, time, threads, b64Salt, b64Hash)
-	return encoded, nil
+// decodePHCHash parses a PHC formatted string into its components.
+func decodePHCHash(encodedHash string) (p Params, salt, hash []byte, err error) {
+	parts := strings.Split(encodedHash, "$")
+	if len(parts) != 6 {
+		return p, nil, nil, ErrInvalidHash
+	}
+
+	if parts[1] != "argon2id" {
+		return p, nil, nil, ErrIncompatibleVariant
+	}
+
+	var version int
+	if _, scanErr := fmt.Sscanf(parts[2], "v=%d", &version); scanErr != nil || version != argon2.Version {
+		return p, nil, nil, ErrIncompatibleVersion
+	}
+
+	// Parse parameters: m=65536,t=1,p=4
+	paramPairs := strings.Split(parts[3], ",")
+	if len(paramPairs) != 3 {
+		return p, nil, nil, ErrInvalidParams
+	}
+
+	for _, pair := range paramPairs {
+		kv := strings.Split(pair, "=")
+		if len(kv) != 2 {
+			return p, nil, nil, ErrInvalidParams
+		}
+
+		val, parseErr := strconv.ParseUint(kv[1], 10, 32)
+		if parseErr != nil {
+			return p, nil, nil, ErrInvalidParams
+		}
+
+		switch kv[0] {
+		case "m":
+			p.Memory = uint32(val)
+		case "t":
+			p.Iterations = uint32(val)
+		case "p":
+			p.Parallelism = uint8(val)
+		default:
+			return p, nil, nil, ErrInvalidParams
+		}
+	}
+
+	// Sanity bounds check to protect against DoS / memory exhaustion
+	if p.Memory < 8 || p.Memory > 1024*1024 || p.Iterations < 1 || p.Iterations > 100 || p.Parallelism < 1 {
+		return p, nil, nil, ErrInvalidParams
+	}
+
+	salt, err = base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil || len(salt) == 0 {
+		return p, nil, nil, fmt.Errorf("%w: invalid salt decoding", ErrInvalidHash)
+	}
+	p.SaltLength = uint32(len(salt))
+
+	hash, err = base64.RawStdEncoding.DecodeString(parts[5])
+	if err != nil || len(hash) == 0 {
+		return p, nil, nil, fmt.Errorf("%w: invalid hash decoding", ErrInvalidHash)
+	}
+	p.KeyLength = uint32(len(hash))
+
+	return p, salt, hash, nil
 }

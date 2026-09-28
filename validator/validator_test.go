@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -483,3 +484,119 @@ func TestGetErrorsFullStr(t *testing.T) {
 	assert.Contains(t, fullStr, "name: required")
 	assert.Contains(t, fullStr, "email: required")
 }
+
+func TestGetErrorsMap(t *testing.T) {
+	t.Run("Nil error returns nil", func(t *testing.T) {
+		assert.Nil(t, GetErrorsMap(nil))
+		val := New()
+		assert.Nil(t, val.GetErrorsMap(nil))
+	})
+
+	t.Run("Non-validation error returns error key", func(t *testing.T) {
+		err := fmt.Errorf("database connection failed")
+		res := GetErrorsMap(err)
+		assert.NotNil(t, res)
+		assert.Equal(t, "database connection failed", res["error"])
+	})
+
+	t.Run("Valid struct returns nil", func(t *testing.T) {
+		user := User{Name: "Budi", Email: "budi@example.com", Age: 25}
+		err := Struct(user)
+		assert.NoError(t, err)
+		assert.Nil(t, GetErrorsMap(err))
+	})
+
+	t.Run("Invalid struct returns map with JSON tags", func(t *testing.T) {
+		user := User{Name: "", Email: "invalid-email", Age: 12}
+		err := Struct(user)
+		assert.Error(t, err)
+
+		errMap := GetErrorsMap(err)
+		assert.NotNil(t, errMap)
+		assert.Equal(t, "This field is required", errMap["name"])
+		assert.Equal(t, "Invalid email address format", errMap["email"])
+		assert.Equal(t, "Must be greater than or equal to 18", errMap["age"])
+	})
+
+	t.Run("Instance method GetErrorsMap", func(t *testing.T) {
+		val := New()
+		user := User{Name: "", Email: "test@domain.com", Age: 10}
+		err := val.Struct(user)
+		assert.Error(t, err)
+
+		errMap := val.GetErrorsMap(err)
+		assert.Equal(t, "This field is required", errMap["name"])
+		assert.Equal(t, "Must be greater than or equal to 18", errMap["age"])
+		assert.NotContains(t, errMap, "email")
+	})
+}
+
+func TestContextValidation(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("StructCtx Valid", func(t *testing.T) {
+		user := User{Name: "Siti", Email: "siti@example.com", Age: 22}
+		assert.NoError(t, StructCtx(ctx, user))
+
+		val := New()
+		assert.NoError(t, val.StructCtx(ctx, user))
+	})
+
+	t.Run("StructCtx Invalid", func(t *testing.T) {
+		user := User{Name: "", Email: "invalid", Age: 15}
+		err := StructCtx(ctx, user)
+		assert.Error(t, err)
+		assert.Contains(t, GetErrorFirstMsg(err), "This field is required")
+
+		val := New()
+		err2 := val.StructCtx(ctx, user)
+		assert.Error(t, err2)
+	})
+
+	t.Run("VarCtx Valid and Invalid", func(t *testing.T) {
+		assert.NoError(t, VarCtx(ctx, "valid@test.com", "email"))
+		assert.Error(t, VarCtx(ctx, "not-an-email", "email"))
+
+		val := New()
+		assert.NoError(t, val.VarCtx(ctx, "valid@test.com", "email"))
+		assert.Error(t, val.VarCtx(ctx, "not-an-email", "email"))
+	})
+}
+
+func TestAdditionalTagsTranslations(t *testing.T) {
+	type AdvStruct struct {
+		Lat     string `validate:"latitude" json:"lat"`
+		Lng     string `validate:"longitude" json:"lng"`
+		Ver     string `validate:"semver" json:"ver"`
+		TZ      string `validate:"timezone" json:"tz"`
+		ULID    string `validate:"ulid" json:"ulid"`
+		Cron    string `validate:"cron" json:"cron"`
+		Country string `validate:"iso3166_1_alpha2" json:"country"`
+		Cur     string `validate:"iso4217" json:"currency"`
+	}
+
+	invalid := AdvStruct{
+		Lat:     "999",
+		Lng:     "999",
+		Ver:     "v1-not-semver",
+		TZ:      "Fake/Zone",
+		ULID:    "123",
+		Cron:    "not a cron",
+		Country: "INDONESIA", // should be ID
+		Cur:     "RUPIAH",    // should be IDR
+	}
+
+	err := Struct(invalid)
+	assert.Error(t, err)
+
+	errMap := GetErrorsMap(err)
+	assert.Equal(t, "Must be a valid latitude coordinate (-90 to 90)", errMap["lat"])
+	assert.Equal(t, "Must be a valid longitude coordinate (-180 to 180)", errMap["lng"])
+	assert.Equal(t, "Must be a valid semantic version (SemVer)", errMap["ver"])
+	assert.Equal(t, "Must be a valid timezone identifier", errMap["tz"])
+	assert.Equal(t, "Must be a valid ULID", errMap["ulid"])
+	assert.Equal(t, "Must be a valid cron expression", errMap["cron"])
+	assert.Equal(t, "Must be a valid two-letter country code (ISO 3166-1 alpha-2)", errMap["country"])
+	assert.Equal(t, "Must be a valid currency code (ISO 4217)", errMap["currency"])
+}
+

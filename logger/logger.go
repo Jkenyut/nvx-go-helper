@@ -16,6 +16,7 @@ package logger
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	"github.com/Jkenyut/nvx-go-helper/activity"
+	"github.com/bytedance/sonic"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/diode"
 	"go.opentelemetry.io/otel/trace"
@@ -74,8 +76,8 @@ type ConfigProvider interface {
 // and OpenTelemetry trace/span IDs, automatically attaching them to every log event.
 type ActivityHook struct{}
 
-// Run implements zerolog.Hook.
-func (h ActivityHook) Run(e *zerolog.Event, level zerolog.Level, message string) {
+// Run executes the hook for each log event, attaching activity and tracing context.
+func (h ActivityHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
 	ctx := e.GetCtx()
 	if ctx == nil {
 		return
@@ -138,6 +140,19 @@ func InitFromConfig(cfg ConfigProvider) {
 		writer = zerolog.ConsoleWriter{
 			Out:     os.Stderr,
 			NoColor: false,
+			FormatFieldValue: func(i any) string {
+				switch v := i.(type) {
+				case []byte:
+					return string(v)
+				case json.RawMessage:
+					return string(v)
+				case map[string]any, []any, map[string]string:
+					if b, err := sonic.Marshal(v); err == nil {
+						return string(b)
+					}
+				}
+				return fmt.Sprintf("%v", i)
+			},
 		}
 	}
 
@@ -298,9 +313,18 @@ func (h *zerologSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	r.Attrs(func(a slog.Attr) bool {
 		val := a.Value.Any()
-		if err, ok := val.(error); ok {
-			e = e.AnErr(a.Key, err)
-		} else {
+		switch v := val.(type) {
+		case error:
+			e = e.AnErr(a.Key, v)
+		case json.RawMessage:
+			e = e.RawJSON(a.Key, v)
+		case []byte:
+			if sonic.Valid(v) {
+				e = e.RawJSON(a.Key, v)
+			} else {
+				e = e.Bytes(a.Key, v)
+			}
+		default:
 			e = e.Any(a.Key, val)
 		}
 		return true
