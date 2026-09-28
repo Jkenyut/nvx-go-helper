@@ -7,17 +7,17 @@ import (
 )
 
 func TestEncodeDecodeDynamicCursor(t *testing.T) {
-	t.Run("success standard encoding", func(t *testing.T) {
+	t.Run("success standard delimited encoding and decoding", func(t *testing.T) {
 		values := []any{"App X", 1, 105}
 
 		encoded, err := EncodeDynamicCursor(values...)
 		require.NoError(t, err)
-		assert.NotEmpty(t, encoded)
+		assert.Equal(t, "App X,1,105", encoded)
 
 		decoded, err := DecodeDynamicCursor(encoded)
 		require.NoError(t, err)
 
-		// JSON unmarshals numbers as float64
+		// Type inference parses numbers as float64
 		assert.Equal(t, "App X", decoded[0])
 		assert.Equal(t, float64(1), decoded[1])
 		assert.Equal(t, float64(105), decoded[2])
@@ -31,6 +31,69 @@ func TestEncodeDecodeDynamicCursor(t *testing.T) {
 		decoded, err := DecodeDynamicCursor(encoded)
 		require.NoError(t, err)
 		assert.Nil(t, decoded)
+	})
+
+	t.Run("single scalar value cursor", func(t *testing.T) {
+		// Single ID integer
+		decoded, err := DecodeDynamicCursor("105")
+		require.NoError(t, err)
+		require.Len(t, decoded, 1)
+		assert.Equal(t, float64(105), decoded[0])
+
+		// Single string / UUID
+		decoded, err = DecodeDynamicCursor("0192c84f-user-id")
+		require.NoError(t, err)
+		require.Len(t, decoded, 1)
+		assert.Equal(t, "0192c84f-user-id", decoded[0])
+	})
+
+	t.Run("plain JSON array cursor", func(t *testing.T) {
+		jsonCursor := `["App A",42,true]`
+
+		decoded, err := DecodeDynamicCursor(jsonCursor)
+		require.NoError(t, err)
+		require.Len(t, decoded, 3)
+		assert.Equal(t, "App A", decoded[0])
+		assert.Equal(t, float64(42), decoded[1])
+		assert.Equal(t, true, decoded[2])
+	})
+
+	t.Run("delimited string with special characters and commas", func(t *testing.T) {
+		values := []any{`Special, "Name"`, 99}
+		encoded, err := EncodeDynamicCursor(values...)
+		require.NoError(t, err)
+		assert.Equal(t, `"Special, \"Name\"",99`, encoded)
+
+		decoded, err := DecodeDynamicCursor(encoded)
+		require.NoError(t, err)
+		require.Len(t, decoded, 2)
+		assert.Equal(t, `Special, "Name"`, decoded[0])
+		assert.Equal(t, float64(99), decoded[1])
+	})
+
+	t.Run("bidirectional cursor with delimited format", func(t *testing.T) {
+		type Item struct {
+			Name string
+			ID   int
+		}
+		items := []Item{
+			{Name: "Item 1", ID: 10},
+			{Name: "Item 2", ID: 20},
+		}
+
+		res := GenerateBidirectionalCursor(
+			items,
+			2,
+			"next",
+			"Item 0,5",
+			func(it Item) []any {
+				return []any{it.Name, it.ID}
+			},
+		)
+
+		assert.Equal(t, "Item 1,10", res.PrevCursor)
+		assert.Equal(t, "Item 2,20", res.NextCursor)
+		assert.True(t, res.HasNext)
 	})
 }
 

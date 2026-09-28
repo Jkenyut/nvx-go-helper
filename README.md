@@ -31,21 +31,24 @@ go get github.com/Jkenyut/nvx-go-helper
 
 | Package | Path | Highlights |
 | :--- | :--- | :--- |
-| **`activity`** | [`/activity`](#1-activity-activity) | Context request tracking (`request_id`, `user_id`, metadata) for structured logging |
-| **`cryptoutil`** | [`/cryptoutil`](#2-cryptoutil-cryptoutil) | Argon2id, AES-256-GCM, ECC (ECIES), UUID v4/v7, cryptographically secure randoms |
-| **`env`** | [`/env`](#3-env-env) | Safe environment variable extraction with type-safe fallbacks |
-| **`fileutil`** | [`/fileutil`](#4-file-utilities-fileutil) | Path traversal protection, deep MIME magic bytes (CFBF & OOXML zip detection) |
-| **`format`** | [`/format`](#5-format-format) | Rune-safe truncation, keyword masking, Rupiah currency, date boundaries |
-| **`maputil`** | [`/maputil`](#6-map-utilities-maputil) | Generic map manipulation: Keys, Values, Merge, Pick, Omit, Invert, Filter |
-| **`pagination`** | [`/pagination`](#7-pagination-pagination) | Dynamic keyset (cursor) & offset pagination with zero forced default limits |
-| **`pointer`** | [`/pointer`](#8-pointer-pointer) | Generic literals to pointer conversion (`pointer.Of`) |
-| **`request`** | [`/request`](#9-request-request) | Fast Sonic JSON binding, body-preserving query parsing, IPv4/IPv6 client IP |
-| **`response`** | [`/response`](#10-response-response) | Standardized API JSON responses powered by `bytedance/sonic` |
-| **`retry`** | [`/retry`](#11-retry-retry) | Configurable exponential backoff retry with leak-free timer hygiene |
-| **`sliceutil`** | [`/sliceutil`](#12-slice-utilities-sliceutil) | Generic slice transformations: Chunk, Map, Filter, Unique, Contains, IndexOf |
-| **`token`** | [`/token`](#13-token-token) | ES256 JWT generation and validation with algorithm confusion prevention |
-| **`validator`** | [`/validator`](#14-validator-validator) | `go-playground/validator/v10` wrapper with custom Indonesian ID tags (NIK, NPWP, Phone) |
-| **`worker`** | [`/worker`](#15-worker-pool-worker) | Generic concurrency worker pool with context cancellation and progress tracking |
+| **`activity`** | [`/activity`](activity/README.md) | Context request tracking (`request_id`, `user_id`, metadata) for structured logging |
+| **`cache`** | [`/cache`](cache/README.md) | In-memory generic cache with TTL, background cleaner, and Singleflight protection |
+| **`cryptoutil`** | [`/cryptoutil`](cryptoutil/README.md) | Argon2id, AES-256-GCM, ECC (ECIES), UUID v4/v7, cryptographically secure randoms |
+| **`env`** | [`/env`](env/README.md) | Safe environment variable extraction with type-safe fallbacks |
+| **`fileutil`** | [`/fileutil`](fileutil/README.md) | Path traversal protection, deep MIME magic bytes (CFBF & OOXML zip detection) |
+| **`format`** | [`/format`](format/README.md) | Rune-safe truncation, keyword masking, Rupiah currency, date boundaries |
+| **`logger`** | [`/logger`](logger/README.md) | Zero-allocation structured logging (Zerolog), diode ring-buffer, OTel & slog bridge |
+| **`maputil`** | [`/maputil`](maputil/README.md) | Generic map manipulation: Keys, Values, Merge, Pick, Omit, Invert, Filter |
+| **`pagination`** | [`/pagination`](pagination/README.md) | Dynamic keyset (cursor) & offset pagination with zero forced default limits |
+| **`pointer`** | [`/pointer`](pointer/README.md) | Generic literals to pointer conversion (`pointer.Of`) |
+| **`request`** | [`/request`](request/README.md) | Fast Sonic JSON binding, body-preserving query parsing, IPv4/IPv6 client IP |
+| **`response`** | [`/response`](response/README.md) | Standardized API JSON responses powered by `bytedance/sonic` |
+| **`retry`** | [`/retry`](retry/README.md) | Configurable exponential backoff retry with leak-free timer hygiene |
+| **`sliceutil`** | [`/sliceutil`](sliceutil/README.md) | Generic slice transformations: Chunk, Map, Filter, Unique, Contains, IndexOf |
+| **`syncutil`** | [`/syncutil`](syncutil/README.md) | High-concurrency primitives: KeyedMutex (per-key lock) and bounded parallel runners |
+| **`token`** | [`/token`](token/README.md) | ES256 JWT generation and validation with algorithm confusion prevention |
+| **`validator`** | [`/validator`](validator/README.md) | `go-playground/validator/v10` wrapper with custom Indonesian ID tags (NIK, NPWP, Phone) |
+| **`worker`** | [`/worker`](worker/README.md) | Generic concurrency worker pool with context cancellation and progress tracking |
 
 ---
 
@@ -412,6 +415,67 @@ workerFn := func(ctx context.Context, id string, data int) (string, error) {
 }
 
 results, err := worker.RunGenericWorkerPool(ctx, jobs, workerFn, nil, cfg)
+```
+
+---
+
+### 16. Logger (`/logger`)
+Structured logging powered by **Zerolog** with asynchronous diode ring-buffer, environment-aware output, OpenTelemetry trace propagation, and Go 1.21+ `log/slog` interoperability.
+
+```go
+import (
+    "github.com/Jkenyut/nvx-go-helper/logger"
+    "github.com/rs/zerolog/log"
+)
+
+// Initialize logger with service environment
+logger.Init(logger.Config{
+    NameService: "user-service",
+    Env:         "production", // "production" -> JSON output; "development" -> colored console
+    Port:        8080,
+})
+defer logger.Close()
+
+// Context-aware logging with automatic trace_id & span_id injection
+logger.Info(ctx).Str("action", "login").Msg("user authenticated successfully")
+```
+
+---
+
+### 17. In-Memory Cache (`/cache`)
+Thread-safe generic key-value cache with automatic TTL expiration, leak-free background sweeping, and singleflight computation (`GetOrCompute`) to prevent cache stampedes.
+
+```go
+import "github.com/Jkenyut/nvx-go-helper/cache"
+
+// Create generic cache with 1-minute cleaner sweep
+c := cache.New[string, UserProfile](cache.WithCleanupInterval(1 * time.Minute))
+defer c.Close()
+
+// Concurrent safe computation: 100 requests trigger exactly 1 DB query
+profile, err := c.GetOrCompute(ctx, "user:101", 5*time.Minute, func(ctx context.Context) (UserProfile, error) {
+    return db.FindUserByID(ctx, 101)
+})
+```
+
+---
+
+### 18. Concurrency & Synchronization (`/syncutil`)
+Advanced concurrency primitives for fine-grained per-entity locking (`KeyedMutex`) and bounded parallel slice execution (`ForEach`, `Map`).
+
+```go
+import "github.com/Jkenyut/nvx-go-helper/syncutil"
+
+// Fine-grained per-user locking (serializes operations for user:101 without blocking user:102)
+var userLocks = syncutil.NewKeyedMutex[string]()
+
+unlock := userLocks.Lock("user:101")
+defer unlock()
+
+// Bounded concurrent mapping with preserved output order
+profiles, err := syncutil.Map(ctx, userIDs, 5, func(ctx context.Context, id int) (UserProfile, error) {
+    return fetchProfile(ctx, id)
+})
 ```
 
 ---

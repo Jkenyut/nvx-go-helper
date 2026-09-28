@@ -63,6 +63,40 @@ response.OK(ctx, "success", resp)
 
 Ideal for infinite scrolling, mobile feeds, and high-performance, high-volume datasets (eliminates `OFFSET` bottlenecks).
 
+#### 🔄 Keyset Cursor Lifecycle (Sequence Diagram)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Handler as Handler / Controller
+    participant Helper as nvx-go-helper/pagination
+    participant DB as Database (SQL / ORM)
+
+    Note over Client,DB: 1. Request Binding & Keyset SQL Preparation
+    Client->>Handler: GET /users?cursor=Budi,105&direction=next&limit=10
+    Handler->>Helper: BindCursorFilterRequest(r, allowedColumns)
+    Handler->>Helper: PrepareDynamicSort(params)
+    Helper-->>Handler: sortRes (Columns, Inverted/Normal Operators, OrderStrs)
+    Handler->>Helper: BuildDynamicKeyset(sortRes.Columns, sortRes.Operators, req.CursorValues)
+    Helper-->>Handler: sqlWhere & sqlArgs
+
+    Note over Client,DB: 2. Query Execution
+    Handler->>DB: Query DB (WHERE sqlWhere ORDER BY OrderStrs LIMIT 10)
+    DB-->>Handler: Return records (users)
+
+    Note over Client,DB: 3. Post-Processing & Bidirectional Cursors
+    opt When direction == "prev"
+        Handler->>Handler: sliceutil.Reverse(users) (revert to original sort order)
+    end
+    Handler->>Helper: GenerateBidirectionalCursor(users, limit, direction, cursor, extractor)
+    Helper-->>Handler: cursorMetadata (next_cursor, prev_cursor, has_next)
+    Handler->>Helper: NewCursorListResponse(users, cursorMetadata)
+    Helper-->>Handler: Standardized JSON ListResponse struct
+
+    Handler-->>Client: 200 OK (items + pagination metadata)
+```
+
 ```go
 import (
 	"github.com/Jkenyut/nvx-go-helper/pagination"
@@ -112,23 +146,27 @@ cursorMeta := pagination.GenerateBidirectionalCursor(
 	},
 )
 
-// 4. In Response: Return standardized cursor response
+// 4. In Response: Return standardized cursor response with readable delimited cursors:
 resp := pagination.NewCursorListResponse(users, cursorMeta)
 response.OK(ctx, "success", resp)
 ```
 
-**JSON Output:**
+**JSON Output (Human-Readable Keyset Cursor):**
 ```json
 {
   "items": [...],
   "pagination": {
     "limit": 10,
-    "next_cursor": "eyJhbGciOiJ...",
-    "prev_cursor": "eyJhbGciOiJ...",
+    "next_cursor": "App X,105",
+    "prev_cursor": "App A,10",
     "has_next": true
   }
 }
 ```
+
+> [!TIP]
+> **Readable & Single-Value Cursors**: Keyset cursors are directly human-readable and URL-friendly without unnecessary Base64 layers (e.g. `?cursor=105` for single-column keyset or `?cursor=App X,105` for composite keysets). Cursors containing commas or quotes are safely escaped.
+
 
 ---
 

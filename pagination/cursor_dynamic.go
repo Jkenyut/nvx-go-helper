@@ -1,51 +1,119 @@
 package pagination
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Jkenyut/nvx-go-helper/request"
 	"github.com/bytedance/sonic"
 )
 
-// EncodeDynamicCursor takes arbitrary values (e.g., from the last row of a query)
-// and encodes them into a base64 JSON array string to be used as a cursor.
-// It uses URLEncoding to be safe for HTTP query parameters.
+// EncodeDynamicCursor takes arbitrary keyset values (e.g. from the last row of a query)
+// and encodes them into a human-readable comma-separated string to be used as a cursor.
+// For single-column keysets, it outputs the single scalar value directly (e.g. "105" or "user-uuid").
+// Values containing commas or quotes are safely escaped with quotes.
 func EncodeDynamicCursor(values ...any) (string, error) {
 	if len(values) == 0 {
 		return "", nil
 	}
-	b, err := sonic.Marshal(values)
-	if err != nil {
-		return "", fmt.Errorf("failed to encode cursor: %w", err)
+
+	parts := make([]string, len(values))
+	for i, v := range values {
+		s := fmt.Sprintf("%v", v)
+		if strings.ContainsAny(s, ",\"\n\r") {
+			parts[i] = strconv.Quote(s)
+		} else {
+			parts[i] = s
+		}
 	}
-	return base64.URLEncoding.EncodeToString(b), nil
+	return strings.Join(parts, ","), nil
 }
 
-// DecodeDynamicCursor decodes a base64 JSON array string back into an array of values.
+// DecodeDynamicCursor decodes a cursor string back into an array of values.
+// It parses delimited scalar values (e.g. "105", "App A,105", "active,105")
+// or JSON array strings (e.g. `["App A",105]`), with automatic type inference (number as float64, boolean, string).
 func DecodeDynamicCursor(cursor string) ([]any, error) {
-	if cursor == "" {
+	trimmed := strings.TrimSpace(cursor)
+	if trimmed == "" {
 		return nil, nil
 	}
 
-	// First try URLEncoding
-	b, err := base64.URLEncoding.DecodeString(cursor)
-	if err != nil {
-		// Fallback to StdEncoding for backwards compatibility
-		b, err = base64.StdEncoding.DecodeString(cursor)
-		if err != nil {
-			return nil, fmt.Errorf("invalid base64 cursor: %w", err)
+	// 1. Direct Plain JSON array check (if client sends raw JSON)
+	if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+		var values []any
+		if err := sonic.Unmarshal([]byte(trimmed), &values); err == nil {
+			return values, nil
 		}
 	}
 
-	var values []any
-	if err := sonic.Unmarshal(b, &values); err != nil {
-		return nil, fmt.Errorf("failed to decode cursor values: %w", err)
+	// 2. Delimited / Scalar parsing
+	tokens := parseDelimitedTokens(trimmed)
+	if len(tokens) == 0 {
+		return nil, nil
 	}
 
+	values := make([]any, len(tokens))
+	for i, token := range tokens {
+		values[i] = parseInferredValue(token)
+	}
 	return values, nil
+}
+
+// parseDelimitedTokens splits a comma-separated string while respecting quotes.
+func parseDelimitedTokens(s string) []string {
+	var tokens []string
+	var cur strings.Builder
+	inQuote := false
+	escape := false
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if escape {
+			cur.WriteByte(ch)
+			escape = false
+			continue
+		}
+		if ch == '\\' {
+			escape = true
+			continue
+		}
+		if ch == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if ch == ',' && !inQuote {
+			tokens = append(tokens, strings.TrimSpace(cur.String()))
+			cur.Reset()
+			continue
+		}
+		cur.WriteByte(ch)
+	}
+	if cur.Len() > 0 || len(tokens) > 0 {
+		tokens = append(tokens, strings.TrimSpace(cur.String()))
+	}
+	return tokens
+}
+
+// parseInferredValue converts a string token into an appropriate scalar Go value.
+// It infers numbers as float64 (matching standard json unmarshal behavior).
+func parseInferredValue(token string) any {
+	// 1. Boolean check
+	if strings.EqualFold(token, "true") {
+		return true
+	}
+	if strings.EqualFold(token, "false") {
+		return false
+	}
+
+	// 2. Number check (integer or float) -> parse as float64
+	if num, err := strconv.ParseFloat(token, 64); err == nil {
+		return num
+	}
+
+	// 3. String literal
+	return token
 }
 
 // BuildDynamicKeyset generates a nested OR/AND SQL condition for keyset pagination.
