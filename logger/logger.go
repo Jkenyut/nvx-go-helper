@@ -128,7 +128,7 @@ func WithWriter(w io.Writer) Option {
 }
 
 // ActivityHook extracts contextual metadata from activity context
-// (such as request_id, transaction_id, user_id, user_ip, ip_origin, and custom metadata)
+// (such as request_id, correlation_id, user_id, user_ip, ip_origin, and custom metadata)
 // and OpenTelemetry trace/span IDs, automatically attaching them to every log event.
 type ActivityHook struct{}
 
@@ -153,8 +153,8 @@ func (h ActivityHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
 	if act.RequestID != "" {
 		e.Str("request_id", act.RequestID)
 	}
-	if act.TransactionID != "" {
-		e.Str("transaction_id", act.TransactionID)
+	if act.CorrelationID != "" {
+		e.Str("correlation_id", act.CorrelationID)
 	}
 	if act.UserID != "" {
 		e.Str("user_id", act.UserID)

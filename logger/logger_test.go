@@ -190,7 +190,7 @@ func TestActivityHook(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = activity.WithRequestID(ctx, "req-xyz-123")
-	ctx = activity.WithTransactionID(ctx, "trx-abc-456")
+	ctx = activity.WithCorrelationID(ctx, "trx-abc-456")
 	ctx = activity.WithUserID(ctx, "user-999")
 	ctx = activity.WithUserIP(ctx, "192.168.1.50")
 	ctx = activity.WithUserIPOrigin(ctx, "203.0.113.195")
@@ -203,7 +203,7 @@ func TestActivityHook(t *testing.T) {
 		out := buf.String()
 		for _, expected := range []string{
 			"\"request_id\":\"req-xyz-123\"",
-			"\"transaction_id\":\"trx-abc-456\"",
+			"\"correlation_id\":\"trx-abc-456\"",
 			"\"user_id\":\"user-999\"",
 			"\"user_ip\":\"192.168.1.50\"",
 			"\"user_ip_origin\":\"203.0.113.195\"",
@@ -225,7 +225,7 @@ func TestActivityHook(t *testing.T) {
 		out := buf.String()
 		for _, expected := range []string{
 			"\"request_id\":\"req-xyz-123\"",
-			"\"transaction_id\":\"trx-abc-456\"",
+			"\"correlation_id\":\"trx-abc-456\"",
 			"\"user_id\":\"user-999\"",
 			"\"user_ip\":\"192.168.1.50\"",
 			"\"user_ip_origin\":\"203.0.113.195\"",

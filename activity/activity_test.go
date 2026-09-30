@@ -11,10 +11,10 @@ import (
 func TestActivityContext(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("TransactionID", func(t *testing.T) {
+	t.Run("CorrelationID", func(t *testing.T) {
 		trxID := "trx-123"
-		ctx = WithTransactionID(ctx, trxID)
-		got, ok := GetTransactionID(ctx)
+		ctx = WithCorrelationID(ctx, trxID)
+		got, ok := GetCorrelationID(ctx)
 		assert.True(t, ok)
 		assert.Equal(t, trxID, got)
 	})
@@ -108,7 +108,7 @@ func TestActivityContext(t *testing.T) {
 
 	t.Run("GetAllFieldsFromContext", func(t *testing.T) {
 		fields := GetAllFieldsFromContext(ctx)
-		assert.Equal(t, "trx-123", fields["transaction_id"])
+		assert.Equal(t, "trx-123", fields["correlation_id"])
 		assert.Equal(t, "req-789", fields["request_id"])
 		assert.Equal(t, "user-001", fields["user_id"])
 		assert.Equal(t, "127.0.0.1", fields["user_ip"])
@@ -119,7 +119,7 @@ func TestActivityContext(t *testing.T) {
 		ctxWithMeta := WithMetadata(ctx, map[string]any{"module": "payment"})
 		fields := GetAllFieldsFromContext(ctxWithMeta)
 		assert.Equal(t, "payment", fields["module"])
-		assert.Equal(t, "trx-123", fields["transaction_id"])
+		assert.Equal(t, "trx-123", fields["correlation_id"])
 	})
 
 	t.Run("GetAllFieldsFromContext_Empty", func(t *testing.T) {
@@ -128,9 +128,9 @@ func TestActivityContext(t *testing.T) {
 		assert.Empty(t, fields)
 	})
 
-	t.Run("GetTransactionID_NotSet", func(t *testing.T) {
+	t.Run("GetCorrelationID_NotSet", func(t *testing.T) {
 		emptyCtx := context.Background()
-		_, ok := GetTransactionID(emptyCtx)
+		_, ok := GetCorrelationID(emptyCtx)
 		assert.False(t, ok)
 	})
 
@@ -149,7 +149,7 @@ func TestActivityContext(t *testing.T) {
 
 func TestActivityStruct(t *testing.T) {
 	orig := Activity{
-		TransactionID: "trx-batch-1",
+		CorrelationID: "trx-batch-1",
 		RequestID:     "req-batch-2",
 		UserID:        "user-batch-3",
 		UserIP:        "192.168.1.1",
@@ -175,7 +175,7 @@ func TestActivityStruct(t *testing.T) {
 func TestToSlogAttrs(t *testing.T) {
 	t.Run("Populated", func(t *testing.T) {
 		act := Activity{
-			TransactionID: "trx-slog",
+			CorrelationID: "trx-slog",
 			RequestID:     "req-slog",
 			UserID:        "user-slog",
 			UserIP:        "127.0.0.1",
@@ -192,7 +192,7 @@ func TestToSlogAttrs(t *testing.T) {
 			attrMap[a.Key] = a.Value.String()
 		}
 
-		assert.Equal(t, "trx-slog", attrMap["transaction_id"])
+		assert.Equal(t, "trx-slog", attrMap["correlation_id"])
 		assert.Equal(t, "req-slog", attrMap["request_id"])
 		assert.Equal(t, "user-slog", attrMap["user_id"])
 		assert.Equal(t, "127.0.0.1", attrMap["user_ip"])
@@ -208,11 +208,11 @@ func TestToSlogAttrs(t *testing.T) {
 func TestGetFieldValueFromContext(t *testing.T) {
 	ctx := context.Background()
 
-	// Test with internal key via WithTransactionID
+	// Test with internal key via WithCorrelationID
 	trxID := "trx-generic-123"
-	ctx = WithTransactionID(ctx, trxID)
+	ctx = WithCorrelationID(ctx, trxID)
 
-	got, ok := GetFieldValueFromContext[string](ctx, transactionID)
+	got, ok := GetFieldValueFromContext[string](ctx, correlationID)
 	assert.True(t, ok)
 	assert.Equal(t, trxID, got)
 

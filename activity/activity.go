@@ -2,7 +2,7 @@
 //
 // It is used to propagate:
 //   - Request IDs (tracing)
-//   - Transaction IDs (business logic)
+//   - Correlation IDs (cross-service tracing)
 //   - User context (ID, IP)
 //   - Arbitrary metadata
 //
@@ -21,7 +21,7 @@ type key int
 // Context keys constants — unexported to prevent external access.
 // Use the With*/Get* functions to interact with these values.
 const (
-	transactionID key = iota
+	correlationID key = iota
 	requestID
 	userID
 	userIP
@@ -37,22 +37,22 @@ type metadataKey struct{}
 
 // Activity encapsulates standard contextual tracking metadata.
 type Activity struct {
-	TransactionID string `json:"transaction_id,omitempty"`
+	CorrelationID string `json:"correlation_id,omitempty"`
 	RequestID     string `json:"request_id,omitempty"`
 	UserID        string `json:"user_id,omitempty"`
 	UserIP        string `json:"user_ip,omitempty"`
 	UserIPOrigin  string `json:"user_ip_origin,omitempty"`
 }
 
-// WithTransactionID adds a transaction ID to the context.
+// WithCorrelationID adds a correlation ID to the context.
 // Used by middleware or when initiating a new business transaction.
-func WithTransactionID(ctx context.Context, trxID string) context.Context {
-	return context.WithValue(ctx, transactionID, trxID)
+func WithCorrelationID(ctx context.Context, trxID string) context.Context {
+	return context.WithValue(ctx, correlationID, trxID)
 }
 
-// GetTransactionID retrieves the transaction ID from the context.
-func GetTransactionID(ctx context.Context) (string, bool) {
-	trxID, ok := ctx.Value(transactionID).(string)
+// GetCorrelationID retrieves the correlation ID from the context.
+func GetCorrelationID(ctx context.Context) (string, bool) {
+	trxID, ok := ctx.Value(correlationID).(string)
 	return trxID, ok
 }
 
@@ -104,8 +104,8 @@ func GetUserIPOrigin(ctx context.Context) (string, bool) {
 
 // WithActivity injects all non-empty fields of an Activity struct into the context.
 func WithActivity(ctx context.Context, act Activity) context.Context {
-	if act.TransactionID != "" {
-		ctx = WithTransactionID(ctx, act.TransactionID)
+	if act.CorrelationID != "" {
+		ctx = WithCorrelationID(ctx, act.CorrelationID)
 	}
 	if act.RequestID != "" {
 		ctx = WithRequestID(ctx, act.RequestID)
@@ -125,7 +125,7 @@ func WithActivity(ctx context.Context, act Activity) context.Context {
 // FromContext extracts all standard activity fields from context into an Activity struct.
 func FromContext(ctx context.Context) Activity {
 	var act Activity
-	act.TransactionID, _ = GetTransactionID(ctx)
+	act.CorrelationID, _ = GetCorrelationID(ctx)
 	act.RequestID, _ = GetRequestID(ctx)
 	act.UserID, _ = GetUserID(ctx)
 	act.UserIP, _ = GetUserIP(ctx)
@@ -188,8 +188,8 @@ func GetAllFieldsFromContext(ctx context.Context) map[string]any {
 		fields[k] = v
 	}
 
-	if id, ok := GetTransactionID(ctx); ok {
-		fields["transaction_id"] = id
+	if id, ok := GetCorrelationID(ctx); ok {
+		fields["correlation_id"] = id
 	}
 	if v, ok := GetRequestID(ctx); ok {
 		fields["request_id"] = v
@@ -212,8 +212,8 @@ func GetAllFieldsFromContext(ctx context.Context) map[string]any {
 func ToSlogAttrs(ctx context.Context) []slog.Attr {
 	attrs := make([]slog.Attr, 0, 5)
 
-	if v, ok := GetTransactionID(ctx); ok {
-		attrs = append(attrs, slog.String("transaction_id", v))
+	if v, ok := GetCorrelationID(ctx); ok {
+		attrs = append(attrs, slog.String("correlation_id", v))
 	}
 	if v, ok := GetRequestID(ctx); ok {
 		attrs = append(attrs, slog.String("request_id", v))
