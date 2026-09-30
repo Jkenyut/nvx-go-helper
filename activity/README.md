@@ -4,7 +4,7 @@ Context-based request metadata propagation designed for end-to-end tracing and s
 
 ## 🚀 Key Features
 
-- **Context-Bound Metadata**: Thread-safe storage and propagation of `request_id`, `transaction_id`, `user_id`, `user_ip`, and arbitrary custom key-value pairs.
+- **Context-Bound Metadata**: Thread-safe storage and propagation of `request_id`, `correlation_id`, `user_id`, `user_ip`, and arbitrary custom key-value pairs.
 - **Dual Logger Support**: Seamless zero-allocation conversion into **Zerolog** fields and Go 1.21+ **`log/slog`** attributes (`slog.Attr`).
 - **No Global State**: Strictly scopes values to the request lifecycle via `context.Context`.
 
@@ -48,14 +48,16 @@ import (
 
 // Inject individual fields:
 ctx := activity.WithRequestID(r.Context(), "req-12345")
+ctx = activity.WithCorrelationID(ctx, "corr-abc-789")
 ctx = activity.WithUserID(ctx, "user-999")
 ctx = activity.WithUserIP(ctx, "203.0.113.195")
 
 // Or inject a batch activity struct:
 ctx = activity.WithActivity(ctx, activity.Activity{
-	RequestID: "req-12345",
-	UserID:    "user-999",
-	UserIP:    "203.0.113.195",
+	RequestID:     "req-12345",
+	CorrelationID: "corr-abc-789",
+	UserID:        "user-999",
+	UserIP:        "203.0.113.195",
 })
 ```
 

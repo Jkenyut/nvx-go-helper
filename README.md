@@ -31,7 +31,7 @@ go get github.com/Jkenyut/nvx-go-helper
 
 | Package | Path | Highlights |
 | :--- | :--- | :--- |
-| **`activity`** | [`/activity`](activity/README.md) | Context request tracking (`request_id`, `user_id`, metadata) for structured logging |
+| **`activity`** | [`/activity`](activity/README.md) | Context request tracking (`request_id`, `correlation_id`, `user_id`, metadata) for structured logging |
 | **`cache`** | [`/cache`](cache/README.md) | In-memory generic cache with TTL, background cleaner, and Singleflight protection |
 | **`cryptoutil`** | [`/cryptoutil`](cryptoutil/README.md) | Argon2id, AES-256-GCM, ECC (ECIES), UUID v4/v7, cryptographically secure randoms |
 | **`env`** | [`/env`](env/README.md) | Safe environment variable extraction with type-safe fallbacks |
@@ -62,9 +62,10 @@ import "github.com/Jkenyut/nvx-go-helper/activity"
 
 // Inject into Context (individual or batch via Activity struct)
 ctx := activity.WithActivity(context.Background(), activity.Activity{
-    RequestID: "req-abc-123",
-    UserID:    "user-456",
-    UserIP:    "127.0.0.1",
+    RequestID:     "req-abc-123",
+    CorrelationID: "corr-xyz-789",
+    UserID:        "user-456",
+    UserIP:        "127.0.0.1",
 })
 
 // Extract anywhere downstream

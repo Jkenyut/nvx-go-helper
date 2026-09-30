@@ -7,7 +7,7 @@ Structured logging wrapper integrating **Zerolog** with asynchronous diode ring-
 - **Functional Options (`logger.Init`)**: Clean, flexible configuration without requiring rigid structs.
 - **Environment-Aware**: Automatically outputs pretty colored logs to `stderr` in development, and high-throughput JSON to `stdout` in production.
 - **Diode Ring-Buffer**: High-performance asynchronous non-blocking log writer prevents slow disk or stdout I/O from stalling HTTP requests.
-- **OTel & Activity Context**: Automatically extracts `trace_id`, `span_id`, `request_id`, `user_id`, and custom metadata from `context.Context`.
+- **OTel & Activity Context**: Automatically extracts `trace_id`, `span_id`, `request_id`, `correlation_id`, `user_id`, and custom metadata from `context.Context`.
 - **Stdlib Slog Bridge**: `logger.Slog()` converts the Zerolog logger to standard Go `*slog.Logger` for seamless compatibility with third-party drivers.
 
 ## 📖 Quickstart & Examples
@@ -29,7 +29,7 @@ logger.Init(
 )
 defer logger.Close()
 
-// Context-aware logging (auto-attaches trace_id, request_id, user_id)
+// Context-aware logging (auto-attaches trace_id, request_id, correlation_id, user_id)
 logger.Info(ctx).Str("action", "checkout").Msg("order placed successfully")
 ```
 
