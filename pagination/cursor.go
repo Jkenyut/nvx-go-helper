@@ -6,10 +6,39 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Jkenyut/nvx-go-helper/request"
 	"github.com/Jkenyut/nvx-go-helper/sliceutil"
 	"github.com/bytedance/sonic"
 )
+
+func formatScalarValue(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case int:
+		return strconv.Itoa(val)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	case int32:
+		return strconv.FormatInt(int64(val), 10)
+	case uint:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint64:
+		return strconv.FormatUint(val, 10)
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(val), 'f', -1, 32)
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case fmt.Stringer:
+		return val.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
 
 // EncodeDynamicCursor takes arbitrary keyset values (e.g. from the last row of a query)
 // and encodes them into a human-readable comma-separated string to be used as a cursor.
@@ -20,9 +49,17 @@ func EncodeDynamicCursor(values ...any) (string, error) {
 		return "", nil
 	}
 
+	if len(values) == 1 {
+		s := formatScalarValue(values[0])
+		if strings.ContainsAny(s, ",\"\n\r") {
+			return strconv.Quote(s), nil
+		}
+		return s, nil
+	}
+
 	parts := make([]string, len(values))
 	for i, v := range values {
-		s := fmt.Sprintf("%v", v)
+		s := formatScalarValue(v)
 		if strings.ContainsAny(s, ",\"\n\r") {
 			parts[i] = strconv.Quote(s)
 		} else {
@@ -64,6 +101,14 @@ func DecodeDynamicCursor(cursor string) ([]any, error) {
 
 // parseDelimitedTokens splits a comma-separated string while respecting quotes.
 func parseDelimitedTokens(s string) []string {
+	if !strings.ContainsAny(s, ",\"\\") {
+		trimmed := strings.TrimSpace(s)
+		if trimmed == "" {
+			return nil
+		}
+		return []string{trimmed}
+	}
+
 	var tokens []string
 	var cur strings.Builder
 	inQuote := false
@@ -129,33 +174,34 @@ func BuildDynamicKeyset(columns []string, operators []string, values []any) (str
 		return "", nil
 	}
 
-	totalArgs := n * (n + 1) / 2
-	orClauses := make([]string, 0, n)
-	finalArgs := make([]any, 0, totalArgs)
-
-	for i := 0; i < n; i++ {
-		andClauses := make([]string, 0, i+1)
-
-		// Add equals for all preceding columns
-		for j := 0; j < i; j++ {
-			andClauses = append(andClauses, columns[j]+" = ?")
-			finalArgs = append(finalArgs, values[j])
-		}
-
-		// Add operator for the current column
-		andClauses = append(andClauses, columns[i]+" "+operators[i]+" ?")
-		finalArgs = append(finalArgs, values[i])
-
-		// Join AND clauses for this block
-		if len(andClauses) == 1 {
-			orClauses = append(orClauses, "("+andClauses[0]+")")
-		} else {
-			orClauses = append(orClauses, "("+strings.Join(andClauses, " AND ")+")")
-		}
+	if n == 1 {
+		return "(" + columns[0] + " " + operators[0] + " ?)", []any{values[0]}
 	}
 
-	sqlStr := strings.Join(orClauses, " OR ")
-	return sqlStr, finalArgs
+	totalArgs := n * (n + 1) / 2
+	finalArgs := make([]any, 0, totalArgs)
+
+	var b strings.Builder
+	b.Grow(n * 35)
+
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			b.WriteString(" OR ")
+		}
+		b.WriteByte('(')
+		for j := 0; j < i; j++ {
+			b.WriteString(columns[j])
+			b.WriteString(" = ? AND ")
+			finalArgs = append(finalArgs, values[j])
+		}
+		b.WriteString(columns[i])
+		b.WriteByte(' ')
+		b.WriteString(operators[i])
+		b.WriteString(" ?)")
+		finalArgs = append(finalArgs, values[i])
+	}
+
+	return b.String(), finalArgs
 }
 
 // InvertSort inverts SQL operators and sort directions for keyset backward traversal.
@@ -237,7 +283,29 @@ func GenerateBidirectionalCursor[T any](items []T, limit int, direction, current
 // prepareDynamicSort parses sort strings, validates them against allowed columns,
 // appends the unique tie-breaker, and handles bidirectional inversion.
 func prepareDynamicSort(sortBy, sortType, direction string, cfg KeysetConfig) (columns, operators, orderStrs []string) {
-	sortBys := strings.Split(sortBy, ",")
+	trimmedSortBy := strings.TrimSpace(sortBy)
+	if trimmedSortBy == "" {
+		if cfg.UniqueColumn != "" {
+			st := strings.ToLower(strings.TrimSpace(cfg.UniqueSortType))
+			if st == "" {
+				st = "desc"
+			}
+			op := ">"
+			if st == "desc" {
+				op = "<"
+			}
+			cols := []string{cfg.UniqueColumn}
+			ops := []string{op}
+			orders := []string{cfg.UniqueColumn + " " + strings.ToUpper(st)}
+			if strings.EqualFold(strings.TrimSpace(direction), "prev") {
+				ops, orders = InvertSort(ops, orders)
+			}
+			return cols, ops, orders
+		}
+		return nil, nil, nil
+	}
+
+	sortBys := strings.Split(trimmedSortBy, ",")
 	sortTypes := strings.Split(sortType, ",")
 
 	capHint := len(sortBys) + 1
@@ -331,14 +399,10 @@ func (r DynamicCursorRequest) GetDirection() string {
 // BindDynamicCursorRequest extracts standard pagination parameters from an HTTP request.
 // It uses safe default values if the parameters are not provided in the query string.
 func BindDynamicCursorRequest(r *http.Request) DynamicCursorRequest {
-	return DynamicCursorRequest{
-		SortBy:         request.GetQueryString(r, "sort_by", ""),
-		SortType:       request.GetQueryString(r, "sort_type", ""),
-		Cursor:         request.GetQueryString(r, "cursor", ""),
-		Direction:      request.GetQueryString(r, "direction", "next"),
-		Limit:          request.GetQueryInt(r, "limit", 0),
-		ShowPagination: request.GetQueryBool(r, "show_pagination", true),
+	if r == nil || r.URL == nil {
+		return DynamicCursorRequest{Direction: "next", ShowPagination: true}
 	}
+	return bindDynamicCursorRequestFromQuery(r.URL.Query())
 }
 
 // KeysetConfig holds the configuration for generating dynamic keyset SQL clauses.
@@ -349,6 +413,11 @@ type KeysetConfig struct {
 	UniqueColumn string
 	// UniqueSortType defines the sort direction for the tie-breaker: "ASC" or "DESC" (defaults to "DESC").
 	UniqueSortType string
+	// Detector is an optional TypeDetector to normalize cursor values into native SQL types.
+	// If nil and AutoDetectTypes is true, DefaultDetector is used.
+	Detector *TypeDetector
+	// AutoDetectTypes toggles automatic cursor value normalization against database column types.
+	AutoDetectTypes bool
 }
 
 // KeysetQuery contains the generated WHERE condition, arguments, and ORDER BY clauses for SQL execution.
@@ -377,7 +446,17 @@ func BuildKeysetQueryFromValues(sortBy, sortType, direction string, cursorValues
 	var sqlWhere string
 	var sqlArgs []any
 	if len(cursorValues) > 0 {
-		sqlWhere, sqlArgs = BuildDynamicKeyset(cols, ops, cursorValues)
+		vals := cursorValues
+		if cfg.AutoDetectTypes || cfg.Detector != nil {
+			d := DefaultDetector
+			if cfg.Detector != nil {
+				d = cfg.Detector
+			}
+			if normalized, err := d.NormalizeCursorValues(cols, cursorValues); err == nil {
+				vals = normalized
+			}
+		}
+		sqlWhere, sqlArgs = BuildDynamicKeyset(cols, ops, vals)
 	}
 
 	return KeysetQuery{
@@ -401,8 +480,35 @@ func BuildKeysetQuery(req DynamicCursorRequest, cfg KeysetConfig) (KeysetQuery, 
 		cursorVals = vals
 	}
 
-	return BuildKeysetQueryFromValues(req.SortBy, req.SortType, req.Direction, cursorVals, cfg), nil
+	cols, ops, orders := prepareDynamicSort(req.SortBy, req.SortType, req.Direction, cfg)
+
+	var sqlWhere string
+	var sqlArgs []any
+	if len(cursorVals) > 0 {
+		vals := cursorVals
+		if cfg.AutoDetectTypes || cfg.Detector != nil {
+			d := DefaultDetector
+			if cfg.Detector != nil {
+				d = cfg.Detector
+			}
+			normVals, err := d.NormalizeCursorValues(cols, cursorVals)
+			if err != nil {
+				return KeysetQuery{}, fmt.Errorf("normalizing cursor values: %w", err)
+			}
+			vals = normVals
+		}
+		sqlWhere, sqlArgs = BuildDynamicKeyset(cols, ops, vals)
+	}
+
+	return KeysetQuery{
+		Where:     sqlWhere,
+		Args:      sqlArgs,
+		OrderStrs: orders,
+		Columns:   cols,
+		Operators: ops,
+	}, nil
 }
+
 
 // BuildKeysetQuery builds a KeysetQuery directly on DynamicCursorRequest.
 func (r DynamicCursorRequest) BuildKeysetQuery(cfg KeysetConfig) (KeysetQuery, error) {
@@ -441,14 +547,20 @@ func NewFieldExtractor[T any](getters map[string]func(T) any, uniqueGetter func(
 }
 
 func (e *FieldExtractor[T]) resolveGetters(sortBy string) []func(T) any {
-	parts := strings.Split(sortBy, ",")
+	trimmed := strings.TrimSpace(sortBy)
+	if trimmed == "" {
+		if e.uniqueGetter != nil {
+			return []func(T) any{e.uniqueGetter}
+		}
+		return nil
+	}
+
+	parts := strings.Split(trimmed, ",")
 	resolved := make([]func(T) any, 0, len(parts)+1)
-	if sortBy != "" {
-		for _, part := range parts {
-			col := strings.ToLower(strings.TrimSpace(part))
-			if getter, ok := e.getters[col]; ok && getter != nil {
-				resolved = append(resolved, getter)
-			}
+	for _, part := range parts {
+		col := strings.ToLower(strings.TrimSpace(part))
+		if getter, ok := e.getters[col]; ok && getter != nil {
+			resolved = append(resolved, getter)
 		}
 	}
 	if e.uniqueGetter != nil {

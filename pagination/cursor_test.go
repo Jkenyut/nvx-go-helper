@@ -360,3 +360,41 @@ func TestFieldExtractorAndFinalizeCursor(t *testing.T) {
 		assert.NotNil(t, resp.Pagination)
 	})
 }
+
+func BenchmarkEncodeDynamicCursor_Single(b *testing.B) {
+	for b.Loop() {
+		_, _ = EncodeDynamicCursor(105)
+	}
+}
+
+func BenchmarkEncodeDynamicCursor_Composite(b *testing.B) {
+	for b.Loop() {
+		_, _ = EncodeDynamicCursor("Alice", 105)
+	}
+}
+
+func BenchmarkDecodeDynamicCursor(b *testing.B) {
+	token := "Alice,105"
+	for b.Loop() {
+		_, _ = DecodeDynamicCursor(token)
+	}
+}
+
+func BenchmarkBuildDynamicKeyset_Single(b *testing.B) {
+	cols := []string{"id"}
+	ops := []string{"<"}
+	vals := []any{105}
+	for b.Loop() {
+		_, _ = BuildDynamicKeyset(cols, ops, vals)
+	}
+}
+
+func BenchmarkBuildDynamicKeyset_Composite(b *testing.B) {
+	cols := []string{"name", "id"}
+	ops := []string{">", "<"}
+	vals := []any{"Alice", 105}
+	for b.Loop() {
+		_, _ = BuildDynamicKeyset(cols, ops, vals)
+	}
+}
+

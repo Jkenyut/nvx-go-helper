@@ -34,3 +34,36 @@ func NewFinalizedCursorResponse[T any](items []T, req DynamicCursorRequest, extr
 	finalItems, meta := FinalizeCursor(items, req, extractFn)
 	return NewCursorListResponse(finalItems, meta)
 }
+
+// UnifiedListResponse formats a standardized response for unified/hybrid pagination endpoints.
+// The Pagination field can hold either *Pagination (offset mode) or *CursorPagination (cursor mode),
+// serializing seamlessly into JSON while preserving strong type safety for Items.
+type UnifiedListResponse[T any] struct {
+	Items      []T `json:"items"`
+	Pagination any `json:"pagination,omitempty"`
+}
+
+// NewUnifiedListResponse creates a new UnifiedListResponse for hybrid endpoints.
+func NewUnifiedListResponse[T any](items []T, pagination any) UnifiedListResponse[T] {
+	return UnifiedListResponse[T]{
+		Items:      items,
+		Pagination: pagination,
+	}
+}
+
+// ToUnified converts a ListResponse[T] into a UnifiedListResponse[T].
+func (r ListResponse[T]) ToUnified() UnifiedListResponse[T] {
+	return UnifiedListResponse[T]{
+		Items:      r.Items,
+		Pagination: r.Pagination,
+	}
+}
+
+// ToUnified converts a CursorListResponse[T] into a UnifiedListResponse[T].
+func (r CursorListResponse[T]) ToUnified() UnifiedListResponse[T] {
+	return UnifiedListResponse[T]{
+		Items:      r.Items,
+		Pagination: r.Pagination,
+	}
+}
+

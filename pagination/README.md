@@ -8,7 +8,7 @@ Production-ready, bidirectional keyset (cursor) and traditional offset paginatio
 - **Traditional Offset-Based:** Sanitized `page` and `limit`, safe SQL `Offset()` calculation, and zero ghost-page bugs.
 - **Unified Mode:** Supports both pagination styles in a single endpoint with automatic detection.
 - **Smart Filtering & Search:** Parses grouped filters (`?filter=status:active,pending`) and direct query parameters (`?status=active`) with SQL injection protection via `allowedFilters` whitelisting.
-- **Generic Responses:** Standardized `ListResponse[T]` and `CursorListResponse[T]` with RFC-compliant metadata.
+- **Generic Responses:** Standardized `ListResponse[T]`, `CursorListResponse[T]`, and `UnifiedListResponse[T]` with RFC-compliant metadata.
 
 ---
 
@@ -148,31 +148,43 @@ response.OK(ctx, "success", resp)
 
 ### 3. Unified Mode (Hybrid Endpoint)
 
-Allow API consumers to choose either offset (`?page=2&limit=20`) or cursor (`?cursor=xyz&direction=next` or `?pagination=cursor`) within the same endpoint:
+Allow API consumers to choose either offset (`?page=2&limit=20`) or cursor (`?cursor=xyz&direction=next` or `?pagination=cursor` or `?mode=cursor`) within the same endpoint:
 
 ```go
-req := pagination.BindUnifiedFilterRequest(r, allowedFilters)
+// 1. In Handler: Extract pagination + filters safely in a single pass
+req := pagination.BindUnifiedFilterRequest(r, allowedFilters, 100)
 
 if req.IsCursor {
-	// Keyset cursor logic:
-	keyset, _ := req.BuildKeysetQuery(pagination.KeysetConfig{
+	// 2a. Keyset cursor logic:
+	// - Eliminates COUNT(*) DB overhead
+	// - Optional TypeDetector auto-casts cursor tokens to SQL types (e.g. integer, uuid)
+	keyset, err := req.BuildKeysetQuery(pagination.KeysetConfig{
 		AllowedColumns: allowedColumns,
 		UniqueColumn:   "id",
+		Detector:       pagination.NewTypeDetector().WithIntegerSuffixes("id"),
 	})
 	// Query DB using keyset.Where, keyset.Args, keyset.OrderStrs, req.GetLimit()...
 
-	// Return standardized cursor response with auto-reversal on 'prev'
-	resp := pagination.NewFinalizedCursorResponse(users, req.DynamicCursorRequest, extractor.Fn(req.GetSortBy()))
+	// Return standardized cursor response with auto-reversal on 'prev':
+	resp := pagination.NewUnifiedFinalizedCursorResponse(users, req, extractor.Fn(req.GetSortBy()))
 	response.OK(ctx, "success", resp)
 } else {
-	// Traditional offset logic:
+	// 2b. Traditional offset logic:
+	// - Use COUNT(*) only for offset mode
+	totalCount := 150
 	pageData := req.Pagination(totalCount)
-	// Query DB using pageData.Limit, pageData.Offset()...
+	// Query DB using req.GetLimit(), req.Offset()...
 
-	resp := pagination.NewListResponse(users, pageData)
+	// Wrap into uniform UnifiedListResponse[T]:
+	resp := pagination.NewUnifiedOffsetResponse(users, pageData)
 	response.OK(ctx, "success", resp)
 }
 ```
+
+> [!TIP]
+> **Unified Return Type**: Both branches return `pagination.UnifiedListResponse[T]`. This allows Service and Repository layers to maintain a strong, concrete return type rather than resorting to `any` or separate duplicate DTOs.
+> If using `ListResponse[T]` or `CursorListResponse[T]`, you can convert them directly with `.ToUnified()`.
+
 
 ---
 

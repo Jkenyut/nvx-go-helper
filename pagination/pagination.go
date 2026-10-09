@@ -31,8 +31,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-
-	"github.com/Jkenyut/nvx-go-helper/request"
 )
 
 // Default values for pagination
@@ -133,13 +131,10 @@ func (r OffsetRequest) Offset() int {
 // BindOffsetRequest extracts standard offset pagination parameters from an HTTP request.
 // If limit is not specified in the query, it defaults to 0 (no limit forced by helper).
 func BindOffsetRequest(r *http.Request) OffsetRequest {
-	return OffsetRequest{
-		SortBy:         request.GetQueryString(r, "sort_by", ""),
-		SortType:       request.GetQueryString(r, "sort_type", ""),
-		Page:           request.GetQueryInt(r, "page", DefaultPage),
-		Limit:          request.GetQueryInt(r, "limit", 0),
-		ShowPagination: request.GetQueryBool(r, "show_pagination", true),
+	if r == nil || r.URL == nil {
+		return OffsetRequest{Page: DefaultPage, ShowPagination: true}
 	}
+	return bindOffsetRequestFromQuery(r.URL.Query())
 }
 
 // Offset returns SQL OFFSET value (0-based)

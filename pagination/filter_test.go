@@ -282,6 +282,19 @@ func TestUnifiedAndOffsetRequestHelpers(t *testing.T) {
 		pageData := uReq.Pagination(50)
 		assert.Equal(t, 50, pageData.Total)
 		assert.Equal(t, 15, pageData.Limit)
+		assert.Equal(t, 1, uReq.GetPage())
+		assert.Equal(t, 0, uReq.Offset())
+	})
+
+	t.Run("Offset mode getters on UnifiedFilterRequest", func(t *testing.T) {
+		reqURL, _ := url.Parse("https://api.example.com/items?page=4&limit=25")
+		r := &http.Request{URL: reqURL}
+		uReq := pagination.BindUnifiedFilterRequest(r, allowedFilters)
+
+		assert.False(t, uReq.IsCursor)
+		assert.Equal(t, 4, uReq.GetPage())
+		assert.Equal(t, 25, uReq.GetLimit())
+		assert.Equal(t, 75, uReq.Offset()) // (4 - 1) * 25
 	})
 
 	t.Run("BuildKeysetQuery on CursorFilterRequest and UnifiedFilterRequest", func(t *testing.T) {
@@ -310,6 +323,78 @@ func TestUnifiedAndOffsetRequestHelpers(t *testing.T) {
 		assert.Equal(t, keyset.Where, keyset2.Where)
 	})
 
+	t.Run("BuildKeysetQuery with Detector normalizes cursor values", func(t *testing.T) {
+		token, _ := pagination.EncodeDynamicCursor("Budi", "100")
+		reqURL, _ := url.Parse("https://api.example.com/items?cursor=" + url.QueryEscape(token) + "&sort_by=name&sort_type=asc")
+		r := &http.Request{URL: reqURL}
+		uReq := pagination.BindUnifiedFilterRequest(r, allowedFilters)
+
+		cfg := pagination.KeysetConfig{
+			AllowedColumns: map[string]string{
+				"name": "users.name",
+			},
+			UniqueColumn:   "users.id",
+			UniqueSortType: "DESC",
+			Detector:       pagination.NewTypeDetector().WithIntegerSuffixes("id"),
+		}
+
+		keyset, err := uReq.BuildKeysetQuery(cfg)
+		require.NoError(t, err)
+		// users.id has suffix id which detector normalizes to int64
+		lastArg := keyset.Args[len(keyset.Args)-1]
+		assert.IsType(t, int64(0), lastArg)
+		assert.Equal(t, int64(100), lastArg)
+	})
+
+	t.Run("UnifiedListResponse constructors and conversions", func(t *testing.T) {
+		items := []string{"item1", "item2"}
+		pageMeta := pagination.NewFromInt(1, 10, 20)
+		cursorMeta := pagination.NewCursorFromInt(10, "next_token", "prev_token", true)
+
+		// 1. ListResponse.ToUnified
+		listResp := pagination.NewListResponse(items, pageMeta)
+		u1 := listResp.ToUnified()
+		assert.Equal(t, items, u1.Items)
+		assert.Equal(t, &pageMeta, u1.Pagination)
+
+		// 2. CursorListResponse.ToUnified
+		curResp := pagination.NewCursorListResponse(items, &cursorMeta)
+		u2 := curResp.ToUnified()
+		assert.Equal(t, items, u2.Items)
+		assert.Equal(t, &cursorMeta, u2.Pagination)
+
+		// 3. NewUnifiedOffsetResponse
+		uReqOffset := pagination.UnifiedFilterRequest{IsCursor: false}
+		u3 := pagination.NewUnifiedOffsetResponse(items, pageMeta)
+		assert.Equal(t, items, u3.Items)
+		assert.Equal(t, &pageMeta, u3.Pagination)
+
+		// 4. NewUnifiedFinalizedCursorResponse
+		type dummyUser struct {
+			ID   int
+			Name string
+		}
+		users := []dummyUser{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}}
+		uReqCursor := pagination.UnifiedFilterRequest{
+			IsCursor: true,
+			DynamicCursorRequest: pagination.DynamicCursorRequest{
+				Limit:     2,
+				Direction: "next",
+			},
+		}
+		u4 := pagination.NewUnifiedFinalizedCursorResponse(users, uReqCursor, func(u dummyUser) []any {
+			return []any{u.ID}
+		})
+		assert.Len(t, u4.Items, 2)
+		assert.NotNil(t, u4.Pagination)
+
+		// 5. NewUnifiedResponse
+		u5Offset := pagination.NewUnifiedResponse(uReqOffset, items, &pageMeta, &cursorMeta)
+		assert.Equal(t, &pageMeta, u5Offset.Pagination)
+		u5Cursor := pagination.NewUnifiedResponse(uReqCursor, items, &pageMeta, &cursorMeta)
+		assert.Equal(t, &cursorMeta, u5Cursor.Pagination)
+	})
+
 	t.Run("OffsetRequest Offset and Pagination methods", func(t *testing.T) {
 		offReq := pagination.OffsetRequest{
 			Page:  3,
@@ -322,3 +407,18 @@ func TestUnifiedAndOffsetRequestHelpers(t *testing.T) {
 		assert.Equal(t, 100, pageData.Total)
 	})
 }
+
+func BenchmarkBindUnifiedFilterRequest(b *testing.B) {
+	reqURL, _ := url.Parse("https://api.example.com/items?cursor=abc,123&direction=next&limit=20&sort_by=name&sort_type=asc&filter=status:active&search=john")
+	r := &http.Request{URL: reqURL}
+	allowed := map[string]string{
+		"status": "users.status",
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = pagination.BindUnifiedFilterRequest(r, allowed)
+	}
+}
+
+
