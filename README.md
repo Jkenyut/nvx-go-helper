@@ -206,30 +206,32 @@ import "github.com/Jkenyut/nvx-go-helper/pagination"
 
 // 1. Traditional Offset Pagination
 req := pagination.BindOffsetFilterRequest(r, map[string]string{"status": "users.status"})
-pageData := pagination.NewFromInt(req.Page, req.Limit, totalCount)
+pageData := req.Pagination(totalCount)
 resp := pagination.NewListResponse(users, pageData)
 
 // 2. Dynamic Keyset Cursor Pagination (Supports multi-column sorting & tie-breakers)
 allowedCols := map[string]string{"name": "user_name", "created_at": "user_created_at"}
 cursorReq := pagination.BindCursorFilterRequest(r, allowedCols)
 
-sortRes := pagination.PrepareDynamicSort(pagination.DynamicSortParams{
-    SortBy:         cursorReq.SortBy,
-    SortType:       cursorReq.SortType,
-    Direction:      cursorReq.Direction,
+keyset, err := cursorReq.BuildKeysetQuery(pagination.KeysetConfig{
     AllowedColumns: allowedCols,
     UniqueColumn:   "user_id",
     UniqueSortType: "DESC",
 })
+_ = err
+_ = keyset
 
-cursorMeta := pagination.GenerateBidirectionalCursor(
-    users, cursorReq.Limit, cursorReq.Direction, cursorReq.Cursor,
-    func(u User) []any { return []any{u.Name, u.CreatedAt, u.ID} },
-)
-cursorResp := pagination.NewCursorListResponse(users, cursorMeta)
+extractor := pagination.NewFieldExtractor(map[string]func(u User) any{
+    "name":       func(u User) any { return u.Name },
+    "created_at": func(u User) any { return u.CreatedAt },
+}, func(u User) any { return u.ID })
+
+cursorResp := pagination.NewFinalizedCursorResponse(users, cursorReq.DynamicCursorRequest, extractor.Fn(cursorReq.SortBy))
+_ = cursorResp
 
 // 3. Unified Mode (Auto-detects cursor vs offset within a single endpoint)
 unified := pagination.BindUnifiedFilterRequest(r, allowedCols)
+_ = unified
 ```
 
 ---

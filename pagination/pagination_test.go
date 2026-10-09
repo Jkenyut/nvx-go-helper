@@ -7,19 +7,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew(t *testing.T) {
+func TestNewFromInt(t *testing.T) {
 	tests := []struct {
-		name     string
-		pageStr  string
-		limitStr string
-		total    int
-		want     Pagination
+		name  string
+		page  int
+		limit int
+		total int
+		want  Pagination
 	}{
 		{
-			name:     "valid input",
-			pageStr:  "3",
-			limitStr: "25",
-			total:    1000,
+			name:  "valid input",
+			page:  3,
+			limit: 25,
+			total: 1000,
 			want: Pagination{
 				Page:       3,
 				Limit:      25,
@@ -32,10 +32,10 @@ func TestNew(t *testing.T) {
 			},
 		},
 		{
-			name:     "default values (no default limit imposed)",
-			pageStr:  "",
-			limitStr: "",
-			total:    50,
+			name:  "default values (no default limit imposed)",
+			page:  0,
+			limit: 0,
+			total: 50,
 			want: Pagination{
 				Page:       1,
 				Limit:      0,
@@ -48,10 +48,10 @@ func TestNew(t *testing.T) {
 			},
 		},
 		{
-			name:     "limit 99999 → allowed",
-			pageStr:  "1",
-			limitStr: "99999",
-			total:    10,
+			name:  "limit 99999 → allowed",
+			page:  1,
+			limit: 99999,
+			total: 10,
 			want: Pagination{
 				Page:       1,
 				Limit:      99999,
@@ -64,42 +64,10 @@ func TestNew(t *testing.T) {
 			},
 		},
 		{
-			name:     "limit 100000 → allowed",
-			pageStr:  "1",
-			limitStr: "100000",
-			total:    100,
-			want: Pagination{
-				Page:       1,
-				Limit:      100000,
-				Total:      100,
-				TotalPages: 1,
-				HasNext:    false,
-				HasPrev:    false,
-				NextPage:   0,
-				PrevPage:   0,
-			},
-		},
-		{
-			name:     "large limit preserved without arbitrary capping",
-			pageStr:  "1",
-			limitStr: "999999",
-			total:    100,
-			want: Pagination{
-				Page:       1,
-				Limit:      999999,
-				Total:      100,
-				TotalPages: 1,
-				HasNext:    false,
-				HasPrev:    false,
-				NextPage:   0,
-				PrevPage:   0,
-			},
-		},
-		{
-			name:     "negative page → forced to 1",
-			pageStr:  "-5",
-			limitStr: "10",
-			total:    100,
+			name:  "negative page → forced to 1",
+			page:  -5,
+			limit: 10,
+			total: 100,
 			want: Pagination{
 				Page:       1,
 				Limit:      10,
@@ -112,26 +80,10 @@ func TestNew(t *testing.T) {
 			},
 		},
 		{
-			name:     "invalid strings → fallback (page 1, limit 0)",
-			pageStr:  "abc",
-			limitStr: "xyz",
-			total:    0,
-			want: Pagination{
-				Page:       1,
-				Limit:      0,
-				Total:      0,
-				TotalPages: 0,
-				HasNext:    false,
-				HasPrev:    false,
-				NextPage:   0,
-				PrevPage:   0,
-			},
-		},
-		{
-			name:     "ghost page out of bounds -> cap to max page",
-			pageStr:  "100",
-			limitStr: "10",
-			total:    50,
+			name:  "ghost page out of bounds -> cap to max page",
+			page:  100,
+			limit: 10,
+			total: 50,
 			want: Pagination{
 				Page:       5,
 				Limit:      10,
@@ -147,7 +99,7 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := New(tt.pageStr, tt.limitStr, tt.total)
+			got := NewFromInt(tt.page, tt.limit, tt.total)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -235,67 +187,9 @@ func TestLinks(t *testing.T) {
 	}
 }
 
-func BenchmarkNew(b *testing.B) {
+func BenchmarkNewFromInt(b *testing.B) {
 	for b.Loop() {
-		_ = New("2", "25", 1000)
-	}
-}
-
-func TestNewCursor(t *testing.T) {
-	tests := []struct {
-		name       string
-		limitStr   string
-		nextCursor string
-		prevCursor string
-		hasNext    bool
-		want       CursorPagination
-	}{
-		{
-			name:       "valid cursor inputs",
-			limitStr:   "25",
-			nextCursor: "cursor_xyz",
-			prevCursor: "cursor_abc",
-			hasNext:    true,
-			want: CursorPagination{
-				Limit:      25,
-				NextCursor: "cursor_xyz",
-				PrevCursor: "cursor_abc",
-				HasNext:    true,
-			},
-		},
-		{
-			name:       "invalid limit fallback",
-			limitStr:   "invalid",
-			nextCursor: "next",
-			prevCursor: "",
-			hasNext:    true,
-			want: CursorPagination{
-				Limit:      0,
-				NextCursor: "next",
-				PrevCursor: "",
-				HasNext:    true,
-			},
-		},
-		{
-			name:       "large limit preserved without capping",
-			limitStr:   "999999",
-			nextCursor: "",
-			prevCursor: "",
-			hasNext:    false,
-			want: CursorPagination{
-				Limit:      999999,
-				NextCursor: "",
-				PrevCursor: "",
-				HasNext:    false,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NewCursor(tt.limitStr, tt.nextCursor, tt.prevCursor, tt.hasNext)
-			assert.Equal(t, tt.want, got)
-		})
+		_ = NewFromInt(2, 25, 1000)
 	}
 }
 

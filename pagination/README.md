@@ -30,7 +30,7 @@ req := pagination.BindOffsetFilterRequest(r, allowedFilters)
 
 // 2. In Repository: Calculate safe SQL offset and limit
 totalCount := 150
-pageData := pagination.NewFromInt(req.Page, req.Limit, totalCount)
+pageData := req.Pagination(totalCount)
 
 // db.Limit(pageData.Limit).Offset(pageData.Offset())
 // if req.HasFilter("users.status") { ... }
@@ -76,78 +76,54 @@ sequenceDiagram
     Note over Client,DB: 1. Request Binding & Keyset SQL Preparation
     Client->>Handler: GET /users?cursor=Budi,105&direction=next&limit=10
     Handler->>Helper: BindCursorFilterRequest(r, allowedColumns)
-    Handler->>Helper: PrepareDynamicSort(params)
-    Helper-->>Handler: sortRes (Columns, Inverted/Normal Operators, OrderStrs)
-    Handler->>Helper: BuildDynamicKeyset(sortRes.Columns, sortRes.Operators, req.CursorValues)
-    Helper-->>Handler: sqlWhere & sqlArgs
+    Handler->>Helper: req.BuildKeysetQuery(KeysetConfig)
+    Helper-->>Handler: keyset (Where, Args, OrderStrs)
 
     Note over Client,DB: 2. Query Execution
-    Handler->>DB: Query DB (WHERE sqlWhere ORDER BY OrderStrs LIMIT 10)
+    Handler->>DB: Query DB (WHERE keyset.Where ORDER BY keyset.OrderStrs LIMIT req.Limit)
     DB-->>Handler: Return records (users)
 
-    Note over Client,DB: 3. Post-Processing & Bidirectional Cursors
-    opt When direction == "prev"
-        Handler->>Handler: sliceutil.Reverse(users) (revert to original sort order)
-    end
-    Handler->>Helper: GenerateBidirectionalCursor(users, limit, direction, cursor, extractor)
-    Helper-->>Handler: cursorMetadata (next_cursor, prev_cursor, has_next)
-    Handler->>Helper: NewCursorListResponse(users, cursorMetadata)
-    Helper-->>Handler: Standardized JSON ListResponse struct
+    Note over Client,DB: 3. Dynamic Extraction & Auto-Reversal
+    Handler->>Helper: NewFinalizedCursorResponse(users, req, extractor.Fn(req.SortBy))
+    Note over Helper: Reverses items if direction == "prev" and encodes next/prev cursors
+    Helper-->>Handler: CursorListResponse struct (items + pagination metadata)
 
     Handler-->>Client: 200 OK (items + pagination metadata)
 ```
 
 ```go
-import (
-	"github.com/Jkenyut/nvx-go-helper/pagination"
-	"github.com/Jkenyut/nvx-go-helper/sliceutil"
-)
+import "github.com/Jkenyut/nvx-go-helper/pagination"
 
-// 1. In Handler: Binds query params and automatically decodes cursor
+// 1. In Handler: Binds query params and decodes cursor
 allowedColumns := map[string]string{
 	"name":       "user_name",
 	"created_at": "user_created_at",
 }
 req := pagination.BindCursorFilterRequest(r, allowedColumns)
 
-// 2. In Repository: Prepare SQL sort and keyset WHERE conditions
-sortRes := pagination.PrepareDynamicSort(pagination.DynamicSortParams{
-	SortBy:         req.SortBy,
-	SortType:       req.SortType,
-	Direction:      req.Direction,
+// 2. In Repository: Generate SQL sort, operators, and keyset WHERE condition in ONE call
+keyset, err := req.BuildKeysetQuery(pagination.KeysetConfig{
 	AllowedColumns: allowedColumns,
 	UniqueColumn:   "user_id", // Mandatory tie-breaker to prevent skipped rows
 	UniqueSortType: "DESC",
 })
-
-var sqlWhere string
-var sqlArgs []any
-if len(req.CursorValues) > 0 {
-	sqlWhere, sqlArgs = pagination.BuildDynamicKeyset(sortRes.Columns, sortRes.Operators, req.CursorValues)
+if err != nil {
+	// Handle cursor error if any
 }
 
 // Execute query:
-// q = q.Where(sqlWhere, sqlArgs...).Limit(req.Limit)
-// for _, order := range sortRes.OrderStrs { q = q.OrderBy(order) }
+// if keyset.HasWhere() { q = q.Where(keyset.Where, keyset.Args...) }
+// for _, order := range keyset.OrderStrs { q = q.OrderBy(order) }
+// q = q.Limit(req.Limit)
 
-// 3. In Service: Handle backward reversal & generate next/prev cursors
-if req.Direction == "prev" {
-	users = sliceutil.Reverse(users)
-}
+// 3. In Service / Handler: Configure extractor and finalize response
+extractor := pagination.NewFieldExtractor(map[string]func(u User) any{
+	"name":       func(u User) any { return u.Name },
+	"created_at": func(u User) any { return u.CreatedAt },
+}, func(u User) any { return u.ID })
 
-cursorMeta := pagination.GenerateBidirectionalCursor(
-	users,
-	req.Limit,
-	req.Direction,
-	req.Cursor,
-	func(u User) []any {
-		// Extract values matching dynamic sort columns + unique column
-		return []any{u.Name, u.CreatedAt, u.ID}
-	},
-)
-
-// 4. In Response: Return standardized cursor response with readable delimited cursors:
-resp := pagination.NewCursorListResponse(users, cursorMeta)
+// Automatically handles backward array reversal and generates bidirectional next/prev cursors:
+resp := pagination.NewFinalizedCursorResponse(users, req.DynamicCursorRequest, extractor.Fn(req.SortBy))
 response.OK(ctx, "success", resp)
 ```
 
@@ -172,15 +148,29 @@ response.OK(ctx, "success", resp)
 
 ### 3. Unified Mode (Hybrid Endpoint)
 
-Allow API consumers to choose either offset (`?page=2&limit=20`) or cursor (`?cursor=xyz&direction=next`) within the same endpoint:
+Allow API consumers to choose either offset (`?page=2&limit=20`) or cursor (`?cursor=xyz&direction=next` or `?pagination=cursor`) within the same endpoint:
 
 ```go
 req := pagination.BindUnifiedFilterRequest(r, allowedFilters)
 
 if req.IsCursor {
-	// Execute cursor keyset logic (using req.DynamicCursorRequest and req.CursorValues)
+	// Keyset cursor logic:
+	keyset, _ := req.BuildKeysetQuery(pagination.KeysetConfig{
+		AllowedColumns: allowedColumns,
+		UniqueColumn:   "id",
+	})
+	// Query DB using keyset.Where, keyset.Args, keyset.OrderStrs, req.GetLimit()...
+
+	// Return standardized cursor response with auto-reversal on 'prev'
+	resp := pagination.NewFinalizedCursorResponse(users, req.DynamicCursorRequest, extractor.Fn(req.GetSortBy()))
+	response.OK(ctx, "success", resp)
 } else {
-	// Execute traditional offset logic (using req.OffsetRequest)
+	// Traditional offset logic:
+	pageData := req.Pagination(totalCount)
+	// Query DB using pageData.Limit, pageData.Offset()...
+
+	resp := pagination.NewListResponse(users, pageData)
+	response.OK(ctx, "success", resp)
 }
 ```
 

@@ -220,71 +220,49 @@ func TestGenerateBidirectionalCursor(t *testing.T) {
 }
 
 func TestPrepareDynamicSort(t *testing.T) {
-	allowed := map[string]string{
-		"code":   "ga_code",
-		"status": "ga_status",
+	cfg := KeysetConfig{
+		AllowedColumns: map[string]string{
+			"code":   "ga_code",
+			"status": "ga_status",
+		},
+		UniqueColumn:   "ga_id",
+		UniqueSortType: "DESC",
 	}
 
 	t.Run("default_sort_when_empty", func(t *testing.T) {
-		res := PrepareDynamicSort(DynamicSortParams{
-			SortBy:         "",
-			SortType:       "",
-			Direction:      "next",
-			AllowedColumns: allowed,
-			UniqueColumn:   "ga_id",
-			UniqueSortType: "DESC",
-		})
-		assert.Equal(t, []string{"ga_id"}, res.Columns)
-		assert.Equal(t, []string{"<"}, res.Operators)
-		assert.Equal(t, []string{"ga_id DESC"}, res.OrderStrs)
+		cols, ops, orders := prepareDynamicSort("", "", "next", cfg)
+		assert.Equal(t, []string{"ga_id"}, cols)
+		assert.Equal(t, []string{"<"}, ops)
+		assert.Equal(t, []string{"ga_id DESC"}, orders)
 	})
 
 	t.Run("valid_sort_with_unique_appended", func(t *testing.T) {
-		res := PrepareDynamicSort(DynamicSortParams{
-			SortBy:         "code",
-			SortType:       "asc",
-			Direction:      "next",
-			AllowedColumns: allowed,
-			UniqueColumn:   "ga_id",
-			UniqueSortType: "DESC",
-		})
-		assert.Equal(t, []string{"ga_code", "ga_id"}, res.Columns)
-		assert.Equal(t, []string{">", "<"}, res.Operators)
-		assert.Equal(t, []string{"ga_code ASC", "ga_id DESC"}, res.OrderStrs)
+		cols, ops, orders := prepareDynamicSort("code", "asc", "next", cfg)
+		assert.Equal(t, []string{"ga_code", "ga_id"}, cols)
+		assert.Equal(t, []string{">", "<"}, ops)
+		assert.Equal(t, []string{"ga_code ASC", "ga_id DESC"}, orders)
 	})
 
 	t.Run("valid_sort_prev_direction", func(t *testing.T) {
-		res := PrepareDynamicSort(DynamicSortParams{
-			SortBy:         "code",
-			SortType:       "asc",
-			Direction:      "prev",
-			AllowedColumns: allowed,
-			UniqueColumn:   "ga_id",
-			UniqueSortType: "DESC",
-		})
-		// Inverted operators and orderstrs
-		assert.Equal(t, []string{"ga_code", "ga_id"}, res.Columns)
-		assert.Equal(t, []string{"<", ">"}, res.Operators)
-		assert.Equal(t, []string{"ga_code DESC", "ga_id ASC"}, res.OrderStrs)
+		cols, ops, orders := prepareDynamicSort("code", "asc", "prev", cfg)
+		assert.Equal(t, []string{"ga_code", "ga_id"}, cols)
+		assert.Equal(t, []string{"<", ">"}, ops)
+		assert.Equal(t, []string{"ga_code DESC", "ga_id ASC"}, orders)
 	})
 
 	t.Run("unique_column_already_in_sort_by_deduplicated", func(t *testing.T) {
-		allowedWithID := map[string]string{
-			"code": "ga_code",
-			"id":   "ga_id",
-		}
-		res := PrepareDynamicSort(DynamicSortParams{
-			SortBy:         "code, id",
-			SortType:       "asc, desc",
-			Direction:      " PREV ",
-			AllowedColumns: allowedWithID,
+		cfgWithID := KeysetConfig{
+			AllowedColumns: map[string]string{
+				"code": "ga_code",
+				"id":   "ga_id",
+			},
 			UniqueColumn:   "ga_id",
 			UniqueSortType: "DESC",
-		})
-		// ga_id should only appear once, and Direction " PREV " should be trimmed and inverted
-		assert.Equal(t, []string{"ga_code", "ga_id"}, res.Columns)
-		assert.Equal(t, []string{"<", ">"}, res.Operators)
-		assert.Equal(t, []string{"ga_code DESC", "ga_id ASC"}, res.OrderStrs)
+		}
+		cols, ops, orders := prepareDynamicSort("code, id", "asc, desc", " PREV ", cfgWithID)
+		assert.Equal(t, []string{"ga_code", "ga_id"}, cols)
+		assert.Equal(t, []string{"<", ">"}, ops)
+		assert.Equal(t, []string{"ga_code DESC", "ga_id ASC"}, orders)
 	})
 }
 
@@ -302,10 +280,83 @@ func TestGetDirection(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		params := DynamicSortParams{Direction: tt.input}
-		assert.Equal(t, tt.want, params.GetDirection())
-
 		req := DynamicCursorRequest{Direction: tt.input}
 		assert.Equal(t, tt.want, req.GetDirection())
 	}
+}
+
+func TestBuildKeysetQuery(t *testing.T) {
+	cfg := KeysetConfig{
+		AllowedColumns: map[string]string{
+			"name":       "users.name",
+			"created_at": "users.created_at",
+		},
+		UniqueColumn:   "users.id",
+		UniqueSortType: "DESC",
+	}
+
+	t.Run("empty cursor produces order without where", func(t *testing.T) {
+		req := DynamicCursorRequest{
+			SortBy:    "name",
+			SortType:  "asc",
+			Direction: "next",
+		}
+		q, err := BuildKeysetQuery(req, cfg)
+		require.NoError(t, err)
+		assert.False(t, q.HasWhere())
+		assert.Empty(t, q.Where)
+		assert.Empty(t, q.Args)
+		assert.Equal(t, []string{"users.name ASC", "users.id DESC"}, q.OrderStrs)
+	})
+
+	t.Run("valid cursor produces keyset where clause and args", func(t *testing.T) {
+		cursor, _ := EncodeDynamicCursor("Budi", 100)
+		req := DynamicCursorRequest{
+			SortBy:    "name",
+			SortType:  "asc",
+			Direction: "next",
+			Cursor:    cursor,
+		}
+		q, err := req.BuildKeysetQuery(cfg)
+		require.NoError(t, err)
+		assert.True(t, q.HasWhere())
+		assert.Equal(t, "(users.name > ?) OR (users.name = ? AND users.id < ?)", q.Where)
+		assert.Equal(t, []any{"Budi", "Budi", float64(100)}, q.Args)
+	})
+}
+
+func TestFieldExtractorAndFinalizeCursor(t *testing.T) {
+	type TestUser struct {
+		ID   int
+		Name string
+	}
+	users := []TestUser{
+		{ID: 1, Name: "Alice"},
+		{ID: 2, Name: "Bob"},
+	}
+
+	extractor := NewFieldExtractor(map[string]func(TestUser) any{
+		"name": func(u TestUser) any { return u.Name },
+	}, func(u TestUser) any { return u.ID })
+
+	t.Run("extracts fields in order", func(t *testing.T) {
+		vals := extractor.Extract(users[0], "name")
+		assert.Equal(t, []any{"Alice", 1}, vals)
+	})
+
+	t.Run("FinalizeCursor reverses array on prev direction", func(t *testing.T) {
+		req := DynamicCursorRequest{
+			Direction: "prev",
+			Limit:     2,
+			Cursor:    "dummy",
+		}
+		finalUsers, meta := FinalizeCursor(users, req, extractor.Fn("name"))
+		assert.Equal(t, "Bob", finalUsers[0].Name)
+		assert.Equal(t, "Alice", finalUsers[1].Name)
+		assert.NotNil(t, meta)
+
+		resp := NewFinalizedCursorResponse(users, req, extractor.Fn("name"))
+		assert.Equal(t, "Bob", resp.Items[0].Name)
+		assert.NotNil(t, resp.Pagination)
+	})
 }

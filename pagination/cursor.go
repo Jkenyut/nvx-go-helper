@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Jkenyut/nvx-go-helper/request"
+	"github.com/Jkenyut/nvx-go-helper/sliceutil"
 	"github.com/bytedance/sonic"
 )
 
@@ -233,41 +234,16 @@ func GenerateBidirectionalCursor[T any](items []T, limit int, direction, current
 	return &p
 }
 
-// DynamicSortParams holds configuration for generating dynamic keyset sorting.
-type DynamicSortParams struct {
-	SortBy         string            // User input e.g. "code,name"
-	SortType       string            // User input e.g. "asc,desc"
-	Direction      string            // User input "next" or "prev"
-	AllowedColumns map[string]string // Map of allowed fields to DB columns
-	UniqueColumn   string            // Tie-breaker DB column (e.g. "id")
-	UniqueSortType string            // "ASC" or "DESC" for tie-breaker
-}
-
-// GetDirection returns the normalized direction ("next" or "prev"). Defaults to "next".
-func (p DynamicSortParams) GetDirection() string {
-	if strings.EqualFold(strings.TrimSpace(p.Direction), "prev") {
-		return "prev"
-	}
-	return "next"
-}
-
-// DynamicSortResult holds the resulting SQL columns, operators, and ORDER BY clauses.
-type DynamicSortResult struct {
-	Columns   []string
-	Operators []string
-	OrderStrs []string
-}
-
-// PrepareDynamicSort parses sort strings, validates them against allowed columns,
+// prepareDynamicSort parses sort strings, validates them against allowed columns,
 // appends the unique tie-breaker, and handles bidirectional inversion.
-func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
-	sortBys := strings.Split(params.SortBy, ",")
-	sortTypes := strings.Split(params.SortType, ",")
+func prepareDynamicSort(sortBy, sortType, direction string, cfg KeysetConfig) (columns, operators, orderStrs []string) {
+	sortBys := strings.Split(sortBy, ",")
+	sortTypes := strings.Split(sortType, ",")
 
 	capHint := len(sortBys) + 1
-	columns := make([]string, 0, capHint)
-	operators := make([]string, 0, capHint)
-	orderStrs := make([]string, 0, capHint)
+	columns = make([]string, 0, capHint)
+	operators = make([]string, 0, capHint)
+	orderStrs = make([]string, 0, capHint)
 	seenCols := make(map[string]bool, capHint)
 
 	for i, rawCol := range sortBys {
@@ -276,7 +252,7 @@ func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
 			continue
 		}
 
-		dbCol, ok := params.AllowedColumns[strings.ToLower(rawCol)]
+		dbCol, ok := cfg.AllowedColumns[strings.ToLower(rawCol)]
 		if !ok {
 			continue
 		}
@@ -286,49 +262,45 @@ func PrepareDynamicSort(params DynamicSortParams) DynamicSortResult {
 		}
 		seenCols[dbCol] = true
 
-		sortType := "asc"
+		sortT := "asc"
 		if i < len(sortTypes) {
 			st := strings.ToLower(strings.TrimSpace(sortTypes[i]))
 			if st == "desc" {
-				sortType = "desc"
+				sortT = "desc"
 			}
 		}
 
 		op := ">"
-		if sortType == "desc" {
+		if sortT == "desc" {
 			op = "<"
 		}
 
 		columns = append(columns, dbCol)
 		operators = append(operators, op)
-		orderStrs = append(orderStrs, dbCol+" "+strings.ToUpper(sortType))
+		orderStrs = append(orderStrs, dbCol+" "+strings.ToUpper(sortT))
 	}
 
 	// Always append unique column at the end
-	if params.UniqueColumn != "" && !seenCols[params.UniqueColumn] {
-		seenCols[params.UniqueColumn] = true
-		columns = append(columns, params.UniqueColumn)
-		st := strings.ToLower(strings.TrimSpace(params.UniqueSortType))
+	if cfg.UniqueColumn != "" && !seenCols[cfg.UniqueColumn] {
+		seenCols[cfg.UniqueColumn] = true
+		columns = append(columns, cfg.UniqueColumn)
+		st := strings.ToLower(strings.TrimSpace(cfg.UniqueSortType))
 		if st == "" {
-			st = "desc" // default to desc if not specified
+			st = "desc"
 		}
 		op := ">"
 		if st == "desc" {
 			op = "<"
 		}
 		operators = append(operators, op)
-		orderStrs = append(orderStrs, params.UniqueColumn+" "+strings.ToUpper(st))
+		orderStrs = append(orderStrs, cfg.UniqueColumn+" "+strings.ToUpper(st))
 	}
 
-	if params.GetDirection() == "prev" {
+	if strings.EqualFold(strings.TrimSpace(direction), "prev") {
 		operators, orderStrs = InvertSort(operators, orderStrs)
 	}
 
-	return DynamicSortResult{
-		Columns:   columns,
-		Operators: operators,
-		OrderStrs: orderStrs,
-	}
+	return columns, operators, orderStrs
 }
 
 // DynamicCursorRequest holds the standard fields required for dynamic keyset pagination in API requests.
@@ -366,5 +338,143 @@ func BindDynamicCursorRequest(r *http.Request) DynamicCursorRequest {
 		Direction:      request.GetQueryString(r, "direction", "next"),
 		Limit:          request.GetQueryInt(r, "limit", 0),
 		ShowPagination: request.GetQueryBool(r, "show_pagination", true),
+	}
+}
+
+// KeysetConfig holds the configuration for generating dynamic keyset SQL clauses.
+type KeysetConfig struct {
+	// AllowedColumns maps user-facing field names (case-insensitive) to database column names.
+	AllowedColumns map[string]string
+	// UniqueColumn is the mandatory tie-breaker database column (e.g. "id" or "user_id").
+	UniqueColumn string
+	// UniqueSortType defines the sort direction for the tie-breaker: "ASC" or "DESC" (defaults to "DESC").
+	UniqueSortType string
+}
+
+// KeysetQuery contains the generated WHERE condition, arguments, and ORDER BY clauses for SQL execution.
+type KeysetQuery struct {
+	// Where is the generated SQL WHERE expression (e.g. "(user_name > ?) OR (user_name = ? AND user_id < ?)"), or empty if no cursor.
+	Where string
+	// Args contains arguments corresponding to placeholders in the Where expression.
+	Args []any
+	// OrderStrs contains the SQL ORDER BY clauses (e.g. ["user_name ASC", "user_id DESC"]).
+	OrderStrs []string
+	// Columns contains the database columns included in the keyset condition.
+	Columns []string
+	// Operators contains the comparison operators applied for each column.
+	Operators []string
+}
+
+// HasWhere reports whether a keyset WHERE filter was generated.
+func (q KeysetQuery) HasWhere() bool {
+	return q.Where != ""
+}
+
+// BuildKeysetQueryFromValues builds a complete KeysetQuery from explicit sort parameters and already-decoded cursor values.
+func BuildKeysetQueryFromValues(sortBy, sortType, direction string, cursorValues []any, cfg KeysetConfig) KeysetQuery {
+	cols, ops, orders := prepareDynamicSort(sortBy, sortType, direction, cfg)
+
+	var sqlWhere string
+	var sqlArgs []any
+	if len(cursorValues) > 0 {
+		sqlWhere, sqlArgs = BuildDynamicKeyset(cols, ops, cursorValues)
+	}
+
+	return KeysetQuery{
+		Where:     sqlWhere,
+		Args:      sqlArgs,
+		OrderStrs: orders,
+		Columns:   cols,
+		Operators: ops,
+	}
+}
+
+// BuildKeysetQuery generates a complete KeysetQuery directly from a DynamicCursorRequest and KeysetConfig.
+// If req.Cursor is not empty, it automatically decodes the cursor into values before building the WHERE clause.
+func BuildKeysetQuery(req DynamicCursorRequest, cfg KeysetConfig) (KeysetQuery, error) {
+	var cursorVals []any
+	if req.Cursor != "" {
+		vals, err := DecodeDynamicCursor(req.Cursor)
+		if err != nil {
+			return KeysetQuery{}, fmt.Errorf("decoding dynamic cursor: %w", err)
+		}
+		cursorVals = vals
+	}
+
+	return BuildKeysetQueryFromValues(req.SortBy, req.SortType, req.Direction, cursorVals, cfg), nil
+}
+
+// BuildKeysetQuery builds a KeysetQuery directly on DynamicCursorRequest.
+func (r DynamicCursorRequest) BuildKeysetQuery(cfg KeysetConfig) (KeysetQuery, error) {
+	return BuildKeysetQuery(r, cfg)
+}
+
+// FinalizeCursor automatically reverses items if navigating backwards ("prev") and generates bidirectional CursorPagination metadata.
+// It returns the correctly-ordered items slice and the pagination metadata.
+func FinalizeCursor[T any](items []T, req DynamicCursorRequest, extractFn func(T) []any) ([]T, *CursorPagination) {
+	if req.GetDirection() == "prev" {
+		items = sliceutil.Reverse(items)
+	}
+	meta := GenerateBidirectionalCursor(items, req.Limit, req.Direction, req.Cursor, extractFn)
+	return items, meta
+}
+
+// FieldExtractor dynamically extracts keyset values from an item struct based on requested sort columns
+// and a mandatory unique tie-breaker column.
+type FieldExtractor[T any] struct {
+	getters      map[string]func(T) any
+	uniqueGetter func(T) any
+}
+
+// NewFieldExtractor creates a new FieldExtractor for type T.
+// getters maps field names (case-insensitive) to getter functions.
+// uniqueGetter extracts the mandatory tie-breaker value (e.g. ID).
+func NewFieldExtractor[T any](getters map[string]func(T) any, uniqueGetter func(T) any) *FieldExtractor[T] {
+	normalized := make(map[string]func(T) any, len(getters))
+	for k, v := range getters {
+		normalized[strings.ToLower(strings.TrimSpace(k))] = v
+	}
+	return &FieldExtractor[T]{
+		getters:      normalized,
+		uniqueGetter: uniqueGetter,
+	}
+}
+
+func (e *FieldExtractor[T]) resolveGetters(sortBy string) []func(T) any {
+	parts := strings.Split(sortBy, ",")
+	resolved := make([]func(T) any, 0, len(parts)+1)
+	if sortBy != "" {
+		for _, part := range parts {
+			col := strings.ToLower(strings.TrimSpace(part))
+			if getter, ok := e.getters[col]; ok && getter != nil {
+				resolved = append(resolved, getter)
+			}
+		}
+	}
+	if e.uniqueGetter != nil {
+		resolved = append(resolved, e.uniqueGetter)
+	}
+	return resolved
+}
+
+// Extract extracts keyset values for item in the exact order specified by sortBy, ending with uniqueGetter.
+func (e *FieldExtractor[T]) Extract(item T, sortBy string) []any {
+	resolved := e.resolveGetters(sortBy)
+	vals := make([]any, len(resolved))
+	for i, getter := range resolved {
+		vals[i] = getter(item)
+	}
+	return vals
+}
+
+// Fn returns an extractor callback optimized for batch execution with zero per-item string parsing or map lookups.
+func (e *FieldExtractor[T]) Fn(sortBy string) func(T) []any {
+	resolved := e.resolveGetters(sortBy)
+	return func(item T) []any {
+		vals := make([]any, len(resolved))
+		for i, getter := range resolved {
+			vals[i] = getter(item)
+		}
+		return vals
 	}
 }

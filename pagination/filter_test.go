@@ -103,12 +103,6 @@ func TestBindCursorFilterRequest(t *testing.T) {
 	assert.Equal(t, "Andi", req.CursorValues[0])
 	assert.Equal(t, float64(42), req.CursorValues[1]) // JSON numbers decode to float64
 	assert.NoError(t, req.CursorErr)
-
-	t.Run("BindListFilterRequest alias works identically", func(t *testing.T) {
-		listReq := pagination.BindListFilterRequest(r, allowedFilters)
-		assert.Equal(t, req.Cursor, listReq.Cursor)
-		assert.Equal(t, req.Search, listReq.Search)
-	})
 }
 
 func TestBindUnifiedFilterRequest(t *testing.T) {
@@ -150,8 +144,10 @@ func TestBindUnifiedFilterRequest(t *testing.T) {
 
 		// OffsetFilterRequest
 		offReq := pagination.OffsetFilterRequest{
-			Filters: map[string][]string{
-				"page_num": {"5"},
+			FilterBase: pagination.FilterBase{
+				Filters: map[string][]string{
+					"page_num": {"5"},
+				},
 			},
 		}
 		val, err := offReq.NormalizedFilterValue("page_num", detector)
@@ -161,8 +157,10 @@ func TestBindUnifiedFilterRequest(t *testing.T) {
 		// CursorFilterRequest
 		token, _ := pagination.EncodeDynamicCursor("99", "admin")
 		curReq := pagination.CursorFilterRequest{
-			Filters: map[string][]string{
-				"page_num": {"10"},
+			FilterBase: pagination.FilterBase{
+				Filters: map[string][]string{
+					"page_num": {"10"},
+				},
 			},
 			CursorValues: []any{"99", "admin"},
 		}
@@ -177,8 +175,10 @@ func TestBindUnifiedFilterRequest(t *testing.T) {
 
 		// UnifiedFilterRequest
 		uReq := pagination.UnifiedFilterRequest{
-			Filters: map[string][]string{
-				"page_num": {"15"},
+			FilterBase: pagination.FilterBase{
+				Filters: map[string][]string{
+					"page_num": {"15"},
+				},
 			},
 			CursorValues: []any{"100"},
 		}
@@ -230,7 +230,7 @@ func TestResponses(t *testing.T) {
 	})
 
 	t.Run("NewCursorListResponse", func(t *testing.T) {
-		cursorMeta := pagination.NewCursor("10", "next_xyz", "prev_abc", true)
+		cursorMeta := pagination.NewCursorFromInt(10, "next_xyz", "prev_abc", true)
 		resp := pagination.NewCursorListResponse(products, &cursorMeta)
 
 		assert.Len(t, resp.Items, 2)
@@ -238,5 +238,87 @@ func TestResponses(t *testing.T) {
 		assert.Equal(t, "next_xyz", resp.Pagination.NextCursor)
 		assert.Equal(t, "prev_abc", resp.Pagination.PrevCursor)
 		assert.True(t, resp.Pagination.HasNext)
+	})
+}
+
+func TestUnifiedAndOffsetRequestHelpers(t *testing.T) {
+	allowedFilters := map[string]string{
+		"status": "users.status",
+	}
+
+	t.Run("Detects mode=cursor and pagination=cursor", func(t *testing.T) {
+		reqURL1, _ := url.Parse("https://api.example.com/items?mode=cursor&limit=10")
+		r1 := &http.Request{URL: reqURL1}
+		uReq1 := pagination.BindUnifiedFilterRequest(r1, allowedFilters)
+		assert.True(t, uReq1.IsCursor)
+
+		reqURL2, _ := url.Parse("https://api.example.com/items?pagination=cursor&limit=10")
+		r2 := &http.Request{URL: reqURL2}
+		uReq2 := pagination.BindUnifiedFilterRequest(r2, allowedFilters)
+		assert.True(t, uReq2.IsCursor)
+	})
+
+	t.Run("Unified conversions and getters", func(t *testing.T) {
+		reqURL, _ := url.Parse("https://api.example.com/items?cursor=abc&limit=15&sort_by=name&sort_type=desc&status=active")
+		r := &http.Request{URL: reqURL}
+		uReq := pagination.BindUnifiedFilterRequest(r, allowedFilters)
+
+		assert.Equal(t, 15, uReq.GetLimit())
+		assert.Equal(t, "name", uReq.GetSortBy())
+		assert.Equal(t, "desc", uReq.GetSortType())
+
+		// Convert to CursorFilterRequest
+		cReq := uReq.ToCursorFilterRequest()
+		assert.Equal(t, "abc", cReq.Cursor)
+		assert.Equal(t, 15, cReq.Limit)
+		assert.True(t, cReq.HasFilter("users.status"))
+
+		// Convert to OffsetFilterRequest
+		oReq := uReq.ToOffsetFilterRequest()
+		assert.Equal(t, 15, oReq.Limit)
+		assert.True(t, oReq.HasFilter("users.status"))
+
+		// Offset Pagination helper
+		pageData := uReq.Pagination(50)
+		assert.Equal(t, 50, pageData.Total)
+		assert.Equal(t, 15, pageData.Limit)
+	})
+
+	t.Run("BuildKeysetQuery on CursorFilterRequest and UnifiedFilterRequest", func(t *testing.T) {
+		token, _ := pagination.EncodeDynamicCursor("Budi", 100)
+		reqURL, _ := url.Parse("https://api.example.com/items?cursor=" + url.QueryEscape(token) + "&sort_by=name&sort_type=asc")
+		r := &http.Request{URL: reqURL}
+		uReq := pagination.BindUnifiedFilterRequest(r, allowedFilters)
+
+		cfg := pagination.KeysetConfig{
+			AllowedColumns: map[string]string{
+				"name": "users.name",
+			},
+			UniqueColumn:   "users.id",
+			UniqueSortType: "DESC",
+		}
+
+		keyset, err := uReq.BuildKeysetQuery(cfg)
+		require.NoError(t, err)
+		assert.True(t, keyset.HasWhere())
+		assert.Equal(t, "(users.name > ?) OR (users.name = ? AND users.id < ?)", keyset.Where)
+		assert.Equal(t, []string{"users.name ASC", "users.id DESC"}, keyset.OrderStrs)
+
+		cReq := uReq.ToCursorFilterRequest()
+		keyset2, err := cReq.BuildKeysetQuery(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, keyset.Where, keyset2.Where)
+	})
+
+	t.Run("OffsetRequest Offset and Pagination methods", func(t *testing.T) {
+		offReq := pagination.OffsetRequest{
+			Page:  3,
+			Limit: 10,
+		}
+		assert.Equal(t, 20, offReq.Offset())
+		pageData := offReq.Pagination(100)
+		assert.Equal(t, 3, pageData.Page)
+		assert.Equal(t, 10, pageData.Limit)
+		assert.Equal(t, 100, pageData.Total)
 	})
 }

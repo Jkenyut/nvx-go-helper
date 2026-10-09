@@ -56,22 +56,6 @@ type Pagination struct {
 	PrevPage int  `json:"prev_page,omitempty"`
 }
 
-// New creates a new Pagination from request parameters.
-// Automatically sanitizes and applies safe defaults.
-// Used in Gin, Fiber, Echo, Chi handlers.
-//
-// Example:
-//
-//	p := pagination.New(c.Query("page"), c.Query("limit"), totalCount)
-//	offset := p.Offset()
-//	rows, _ := db.Limit(p.Limit).Offset(offset).Find(&users)
-func New(pageStr, limitStr string, total int) Pagination {
-	// Parse strings to integers with defaults
-	page := parseInt(pageStr, DefaultPage)
-	limit := parseInt(limitStr, 0)
-	return NewFromInt(page, limit, total)
-}
-
 // NewFromInt creates a new Pagination from integer parameters.
 // Automatically sanitizes and applies safe defaults without forcing an arbitrary limit.
 func NewFromInt(page, limit, total int) Pagination {
@@ -126,6 +110,24 @@ type OffsetRequest struct {
 	Limit int `json:"limit" query:"limit"`
 	// ShowPagination expects a boolean (true/false) to toggle pagination metadata in the response.
 	ShowPagination bool `json:"show_pagination" query:"show_pagination"`
+}
+
+// Pagination builds a safe Pagination metadata object given the total record count.
+func (r OffsetRequest) Pagination(totalCount int) Pagination {
+	return NewFromInt(r.Page, r.Limit, totalCount)
+}
+
+// Offset returns the SQL OFFSET value (0-based) computed from Page and Limit.
+func (r OffsetRequest) Offset() int {
+	page := r.Page
+	if page < 1 {
+		page = DefaultPage
+	}
+	limit := r.Limit
+	if limit < 0 {
+		limit = 0
+	}
+	return (page - 1) * limit
 }
 
 // BindOffsetRequest extracts standard offset pagination parameters from an HTTP request.
@@ -187,19 +189,6 @@ func (p Pagination) Links(baseURL string) (map[string]string, error) {
 	return links, nil
 }
 
-// parseInt safely converts string to int with fallback
-func parseInt(s string, fallback int) int {
-	if s == "" {
-		return fallback
-	}
-	val, err := strconv.Atoi(s)
-	// Return fallback on parsing error
-	if err != nil {
-		return fallback
-	}
-	return val
-}
-
 // CursorPagination represents cursor-based pagination metadata.
 type CursorPagination struct {
 	Limit      int    `json:"limit"`                 // Items per page
@@ -220,9 +209,4 @@ func NewCursorFromInt(limit int, nextCursor string, prevCursor string, hasNext b
 		PrevCursor: prevCursor,
 		HasNext:    hasNext,
 	}
-}
-
-// NewCursor creates a new CursorPagination without forcing an arbitrary default limit.
-func NewCursor(limitStr string, nextCursor string, prevCursor string, hasNext bool) CursorPagination {
-	return NewCursorFromInt(parseInt(limitStr, 0), nextCursor, prevCursor, hasNext)
 }

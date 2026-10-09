@@ -37,7 +37,7 @@ func Example_offsetPagination() {
 	totalCount := 150
 
 	// Create a safe pagination object using the requested page and limit
-	pageData := pagination.NewFromInt(dto.Page, dto.Limit, totalCount)
+	pageData := dto.Pagination(totalCount)
 
 	// Extract the safe SQL OFFSET value
 	sqlOffset := pageData.Offset()

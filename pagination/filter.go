@@ -20,6 +20,8 @@ var reservedQueryParams = map[string]struct{}{
 	"show_pagination": {},
 	"page":            {},
 	"per_page":        {},
+	"mode":            {},
+	"pagination":      {},
 }
 
 // ExtractFiltersAndSearch parses search and filter parameters from an HTTP request.
@@ -111,38 +113,43 @@ func lookupFilter(filters map[string][]string, col string) []string {
 	return nil
 }
 
-// OffsetFilterRequest holds traditional offset pagination parameters, column filters, and search query.
-type OffsetFilterRequest struct {
-	OffsetRequest
+// FilterBase holds extracted column filters and search query, providing query evaluation methods.
+type FilterBase struct {
 	Filters map[string][]string `json:"filters"`
 	Search  string              `json:"search"`
 }
 
 // HasFilter checks if a specific column filter exists and has at least one value.
-func (r OffsetFilterRequest) HasFilter(col string) bool {
-	return len(lookupFilter(r.Filters, col)) > 0
+func (f FilterBase) HasFilter(col string) bool {
+	return len(lookupFilter(f.Filters, col)) > 0
 }
 
 // GetFilter returns all filter values for a specific column.
-func (r OffsetFilterRequest) GetFilter(col string) []string {
-	return lookupFilter(r.Filters, col)
+func (f FilterBase) GetFilter(col string) []string {
+	return lookupFilter(f.Filters, col)
 }
 
 // GetFirstFilter returns the first filter value for a specific column, or an empty string if not present.
-func (r OffsetFilterRequest) GetFirstFilter(col string) string {
-	if vals := lookupFilter(r.Filters, col); len(vals) > 0 {
+func (f FilterBase) GetFirstFilter(col string) string {
+	if vals := lookupFilter(f.Filters, col); len(vals) > 0 {
 		return vals[0]
 	}
 	return ""
 }
 
 // NormalizedFilterValue converts filter values for a column using DefaultDetector or a custom detector.
-func (r OffsetFilterRequest) NormalizedFilterValue(col string, detector ...*TypeDetector) (any, error) {
+func (f FilterBase) NormalizedFilterValue(col string, detector ...*TypeDetector) (any, error) {
 	d := DefaultDetector
 	if len(detector) > 0 && detector[0] != nil {
 		d = detector[0]
 	}
-	return d.NormalizeFilterValue(col, lookupFilter(r.Filters, col))
+	return d.NormalizeFilterValue(col, lookupFilter(f.Filters, col))
+}
+
+// OffsetFilterRequest holds traditional offset pagination parameters, column filters, and search query.
+type OffsetFilterRequest struct {
+	OffsetRequest
+	FilterBase
 }
 
 // BindOffsetFilterRequest extracts offset pagination parameters, column filters, and search query from an HTTP request.
@@ -160,48 +167,19 @@ func BindOffsetFilterRequest(r *http.Request, allowedFilters map[string]string, 
 
 	return OffsetFilterRequest{
 		OffsetRequest: offsetReq,
-		Filters:       filters,
-		Search:        search,
+		FilterBase: FilterBase{
+			Filters: filters,
+			Search:  search,
+		},
 	}
 }
 
 // CursorFilterRequest holds dynamic cursor pagination parameters, column filters, search query, and decoded cursor values.
 type CursorFilterRequest struct {
 	DynamicCursorRequest
-	Filters      map[string][]string `json:"filters"`
-	Search       string              `json:"search"`
-	CursorValues []any               `json:"-"`
-	CursorErr    error               `json:"-"`
-}
-
-// ListFilterRequest is an alias for CursorFilterRequest for flexible naming.
-type ListFilterRequest = CursorFilterRequest
-
-// HasFilter checks if a specific column filter exists and has at least one value.
-func (r CursorFilterRequest) HasFilter(col string) bool {
-	return len(lookupFilter(r.Filters, col)) > 0
-}
-
-// GetFilter returns all filter values for a specific column.
-func (r CursorFilterRequest) GetFilter(col string) []string {
-	return lookupFilter(r.Filters, col)
-}
-
-// GetFirstFilter returns the first filter value for a specific column, or an empty string if not present.
-func (r CursorFilterRequest) GetFirstFilter(col string) string {
-	if vals := lookupFilter(r.Filters, col); len(vals) > 0 {
-		return vals[0]
-	}
-	return ""
-}
-
-// NormalizedFilterValue converts filter values for a column using DefaultDetector or a custom detector.
-func (r CursorFilterRequest) NormalizedFilterValue(col string, detector ...*TypeDetector) (any, error) {
-	d := DefaultDetector
-	if len(detector) > 0 && detector[0] != nil {
-		d = detector[0]
-	}
-	return d.NormalizeFilterValue(col, lookupFilter(r.Filters, col))
+	FilterBase
+	CursorValues []any `json:"-"`
+	CursorErr    error `json:"-"`
 }
 
 // NormalizedCursorValues normalizes the decoded cursor values against sort columns using DefaultDetector or a custom detector.
@@ -214,6 +192,14 @@ func (r CursorFilterRequest) NormalizedCursorValues(sortCols []string, detector 
 		d = detector[0]
 	}
 	return d.NormalizeCursorValues(sortCols, r.CursorValues)
+}
+
+// BuildKeysetQuery builds a KeysetQuery using this cursor filter request.
+func (r CursorFilterRequest) BuildKeysetQuery(cfg KeysetConfig) (KeysetQuery, error) {
+	if r.CursorErr != nil {
+		return KeysetQuery{}, r.CursorErr
+	}
+	return BuildKeysetQueryFromValues(r.SortBy, r.SortType, r.Direction, r.CursorValues, cfg), nil
 }
 
 // BindCursorFilterRequest extracts dynamic cursor pagination parameters, column filters, search query,
@@ -238,16 +224,13 @@ func BindCursorFilterRequest(r *http.Request, allowedFilters map[string]string, 
 
 	return CursorFilterRequest{
 		DynamicCursorRequest: cursorReq,
-		Filters:              filters,
-		Search:               search,
-		CursorValues:         cursorVals,
-		CursorErr:            cursorErr,
+		FilterBase: FilterBase{
+			Filters: filters,
+			Search:  search,
+		},
+		CursorValues: cursorVals,
+		CursorErr:    cursorErr,
 	}
-}
-
-// BindListFilterRequest is an alias for BindCursorFilterRequest.
-func BindListFilterRequest(r *http.Request, allowedFilters map[string]string, maxLimit ...int) ListFilterRequest {
-	return BindCursorFilterRequest(r, allowedFilters, maxLimit...)
 }
 
 // UnifiedFilterRequest can handle both traditional offset and dynamic cursor pagination in a single request struct.
@@ -255,37 +238,61 @@ type UnifiedFilterRequest struct {
 	IsCursor             bool                 `json:"is_cursor"`
 	OffsetRequest        OffsetRequest        `json:"offset_request"`
 	DynamicCursorRequest DynamicCursorRequest `json:"dynamic_cursor_request"`
-	Filters              map[string][]string  `json:"filters"`
-	Search               string               `json:"search"`
-	CursorValues         []any                `json:"-"`
-	CursorErr            error                `json:"-"`
+	FilterBase
+	CursorValues []any `json:"-"`
+	CursorErr    error `json:"-"`
 }
 
-// HasFilter checks if a specific column filter exists and has at least one value.
-func (r UnifiedFilterRequest) HasFilter(col string) bool {
-	return len(lookupFilter(r.Filters, col)) > 0
-}
-
-// GetFilter returns all filter values for a specific column.
-func (r UnifiedFilterRequest) GetFilter(col string) []string {
-	return lookupFilter(r.Filters, col)
-}
-
-// GetFirstFilter returns the first filter value for a specific column, or an empty string if not present.
-func (r UnifiedFilterRequest) GetFirstFilter(col string) string {
-	if vals := lookupFilter(r.Filters, col); len(vals) > 0 {
-		return vals[0]
+// ToOffsetFilterRequest converts the unified request into a dedicated OffsetFilterRequest.
+func (r UnifiedFilterRequest) ToOffsetFilterRequest() OffsetFilterRequest {
+	return OffsetFilterRequest{
+		OffsetRequest: r.OffsetRequest,
+		FilterBase:    r.FilterBase,
 	}
-	return ""
 }
 
-// NormalizedFilterValue converts filter values for a column using DefaultDetector or a custom detector.
-func (r UnifiedFilterRequest) NormalizedFilterValue(col string, detector ...*TypeDetector) (any, error) {
-	d := DefaultDetector
-	if len(detector) > 0 && detector[0] != nil {
-		d = detector[0]
+// ToCursorFilterRequest converts the unified request into a dedicated CursorFilterRequest.
+func (r UnifiedFilterRequest) ToCursorFilterRequest() CursorFilterRequest {
+	return CursorFilterRequest{
+		DynamicCursorRequest: r.DynamicCursorRequest,
+		FilterBase:           r.FilterBase,
+		CursorValues:         r.CursorValues,
+		CursorErr:            r.CursorErr,
 	}
-	return d.NormalizeFilterValue(col, lookupFilter(r.Filters, col))
+}
+
+// GetLimit returns the pagination limit.
+func (r UnifiedFilterRequest) GetLimit() int {
+	if r.IsCursor {
+		return r.DynamicCursorRequest.Limit
+	}
+	return r.OffsetRequest.Limit
+}
+
+// GetSortBy returns the requested sort_by column string.
+func (r UnifiedFilterRequest) GetSortBy() string {
+	if r.IsCursor {
+		return r.DynamicCursorRequest.SortBy
+	}
+	return r.OffsetRequest.SortBy
+}
+
+// GetSortType returns the requested sort_type direction string.
+func (r UnifiedFilterRequest) GetSortType() string {
+	if r.IsCursor {
+		return r.DynamicCursorRequest.SortType
+	}
+	return r.OffsetRequest.SortType
+}
+
+// Pagination builds a safe Pagination metadata object given the total record count (for offset mode).
+func (r UnifiedFilterRequest) Pagination(totalCount int) Pagination {
+	return r.OffsetRequest.Pagination(totalCount)
+}
+
+// BuildKeysetQuery builds a KeysetQuery using this unified request's cursor parameters.
+func (r UnifiedFilterRequest) BuildKeysetQuery(cfg KeysetConfig) (KeysetQuery, error) {
+	return r.ToCursorFilterRequest().BuildKeysetQuery(cfg)
 }
 
 // NormalizedCursorValues normalizes the decoded cursor values against sort columns using DefaultDetector or a custom detector.
@@ -301,7 +308,7 @@ func (r UnifiedFilterRequest) NormalizedCursorValues(sortCols []string, detector
 }
 
 // BindUnifiedFilterRequest automatically detects whether the incoming request uses cursor pagination
-// (if "cursor" or "direction" query parameters are provided) or falls back to traditional offset pagination.
+// (if "cursor", "direction", "mode=cursor", or "pagination=cursor" parameters are provided) or falls back to traditional offset pagination.
 func BindUnifiedFilterRequest(r *http.Request, allowedFilters map[string]string, maxLimit ...int) UnifiedFilterRequest {
 	cursorReq := BindDynamicCursorRequest(r)
 	offsetReq := BindOffsetRequest(r)
@@ -321,7 +328,9 @@ func BindUnifiedFilterRequest(r *http.Request, allowedFilters map[string]string,
 	isCursor := false
 	if r != nil && r.URL != nil {
 		q := r.URL.Query()
-		if q.Has("cursor") || (q.Has("direction") && !q.Has("page")) {
+		mode := strings.ToLower(strings.TrimSpace(q.Get("mode")))
+		pag := strings.ToLower(strings.TrimSpace(q.Get("pagination")))
+		if q.Has("cursor") || (q.Has("direction") && !q.Has("page")) || mode == "cursor" || pag == "cursor" {
 			isCursor = true
 		}
 	}
@@ -336,37 +345,11 @@ func BindUnifiedFilterRequest(r *http.Request, allowedFilters map[string]string,
 		IsCursor:             isCursor,
 		OffsetRequest:        offsetReq,
 		DynamicCursorRequest: cursorReq,
-		Filters:              filters,
-		Search:               search,
-		CursorValues:         cursorVals,
-		CursorErr:            cursorErr,
-	}
-}
-
-// ListResponse formats a standard paginated list response for offset pagination.
-type ListResponse[T any] struct {
-	Items      []T         `json:"items"`
-	Pagination *Pagination `json:"pagination,omitempty"`
-}
-
-// NewListResponse creates a new ListResponse for offset pagination.
-func NewListResponse[T any](items []T, p Pagination) ListResponse[T] {
-	return ListResponse[T]{
-		Items:      items,
-		Pagination: &p,
-	}
-}
-
-// CursorListResponse formats a paginated list response with bidirectional cursor metadata.
-type CursorListResponse[T any] struct {
-	Items      []T               `json:"items"`
-	Pagination *CursorPagination `json:"pagination,omitempty"`
-}
-
-// NewCursorListResponse creates a new CursorListResponse for cursor pagination.
-func NewCursorListResponse[T any](items []T, p *CursorPagination) CursorListResponse[T] {
-	return CursorListResponse[T]{
-		Items:      items,
-		Pagination: p,
+		FilterBase: FilterBase{
+			Filters: filters,
+			Search:  search,
+		},
+		CursorValues: cursorVals,
+		CursorErr:    cursorErr,
 	}
 }
