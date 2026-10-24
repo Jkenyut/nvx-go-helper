@@ -599,4 +599,3 @@ func TestAdditionalTagsTranslations(t *testing.T) {
 	assert.Equal(t, "Must be a valid two-letter country code (ISO 3166-1 alpha-2)", errMap["country"])
 	assert.Equal(t, "Must be a valid currency code (ISO 4217)", errMap["currency"])
 }
-

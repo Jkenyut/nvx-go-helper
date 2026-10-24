@@ -3,6 +3,7 @@ package request
 
 import (
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -13,12 +14,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// DefaultMaxBodyBytes specifies the default 10 MiB payload size limit to prevent memory exhaustion DoS.
+const DefaultMaxBodyBytes = 10 * 1024 * 1024
+
 // BindJSON reads the HTTP request body and decodes the JSON data into the provided struct (dest).
-// It verifies that the Content-Type is application/json and uses bytedance/sonic for high-performance JSON decoding.
+// It verifies that the Content-Type is application/json and enforces a maximum body size limit.
 func BindJSON(r *http.Request, dest any) error {
-	// Ensure the request has a JSON Content-Type
+	if r == nil || r.Body == nil {
+		return errors.New("request or request body cannot be nil")
+	}
+
+	// Ensure the request has a JSON Content-Type (case-insensitive)
 	contentType := r.Header.Get("Content-Type")
-	if !strings.HasPrefix(contentType, "application/json") {
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "application/json") {
 		return errors.New("unsupported content type: must be application/json")
 	}
 
@@ -26,7 +34,8 @@ func BindJSON(r *http.Request, dest any) error {
 		_ = r.Body.Close()
 	}()
 
-	decoder := sonic.ConfigDefault.NewDecoder(r.Body)
+	lr := io.LimitReader(r.Body, DefaultMaxBodyBytes+1)
+	decoder := sonic.ConfigDefault.NewDecoder(lr)
 	if err := decoder.Decode(dest); err != nil {
 		return err
 	}
@@ -315,33 +324,51 @@ func GetQueryMapBoolSlice(r *http.Request, key string, delimiter string) map[str
 	return result
 }
 
-// GetClientIP extracts the real client IP address from the request, securely parsing
-// True-Client-IP, X-Real-IP, and X-Forwarded-For headers. It falls back to RemoteAddr.
-func GetClientIP(r *http.Request) string {
-	var ip string
-
-	if tcip := r.Header.Get("True-Client-IP"); tcip != "" {
-		ip = strings.TrimSpace(tcip)
-	} else if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
-		ip = strings.TrimSpace(xrip)
-	} else if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		ip, _, _ = strings.Cut(xff, ",")
-		ip = strings.TrimSpace(ip)
+// GetClientIP extracts the real client IP address from the request.
+// If trustedProxies are provided, it only inspects forwarding headers (True-Client-IP, X-Real-IP, X-Forwarded-For)
+// when RemoteAddr matches one of the trusted proxy IP addresses. Otherwise it defaults to RemoteAddr to prevent IP spoofing.
+func GetClientIP(r *http.Request, trustedProxies ...string) string {
+	if r == nil {
+		return ""
 	}
 
-	if ip != "" && net.ParseIP(ip) != nil {
-		return ip
-	}
-
-	ip = r.RemoteAddr
-	if host, _, err := net.SplitHostPort(ip); err == nil {
-		ip = host
+	remoteIP := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(remoteIP); err == nil {
+		remoteIP = host
 	} else {
-		ip = strings.Trim(ip, "[]")
+		remoteIP = strings.Trim(remoteIP, "[]")
 	}
 
-	if net.ParseIP(ip) != nil {
-		return ip
+	// Check if proxy trust is satisfied:
+	// If trustedProxies are specified, verify remoteIP is in the list.
+	// If no trustedProxies are specified, maintain backward compatibility.
+	isTrusted := len(trustedProxies) == 0
+	for _, proxy := range trustedProxies {
+		if remoteIP == proxy {
+			isTrusted = true
+			break
+		}
+	}
+
+	if isTrusted {
+		if tcip := r.Header.Get("True-Client-IP"); tcip != "" {
+			if ip := strings.TrimSpace(tcip); net.ParseIP(ip) != nil {
+				return ip
+			}
+		} else if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+			if ip := strings.TrimSpace(xrip); net.ParseIP(ip) != nil {
+				return ip
+			}
+		} else if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			first, _, _ := strings.Cut(xff, ",")
+			if ip := strings.TrimSpace(first); net.ParseIP(ip) != nil {
+				return ip
+			}
+		}
+	}
+
+	if net.ParseIP(remoteIP) != nil {
+		return remoteIP
 	}
 
 	return ""

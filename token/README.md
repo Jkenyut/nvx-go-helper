@@ -1,52 +1,55 @@
 # Token Helper (`/token`)
 
-Lightweight, high-performance JWT signing, verification, and token extraction powered by ECDSA (ES256) and `bytedance/sonic`.
+The token package provides ECDSA (ES256) JSON Web Token (JWT) signing, verification, and claims extraction using `bytedance/sonic`.
 
-## 🛡️ Key Features
+## 1. JWT ES256 Lifecycle Sequence Diagram
 
-- **Strict ES256 (ECDSA P-256)**: Cryptographically robust, asymmetric signing that completely prevents HMAC `none` or algorithm-confusion attacks.
-- **Generic Type-Safe Payloads**: Support for generic `JWTClaims[T]` allowing strongly-typed custom domain payloads in the `data` claim.
-- **High-Performance Serialization**: Ultra-fast JSON encoding and decoding via Sonic.
-- **Standard RFC 7519 Validation**: Built-in verification for `exp` (expiration), `nbf` (not-before), and key integrity.
-
----
-
-## 🔄 JWT ES256 Lifecycle (Sequence Diagram)
+The diagram below shows the token generation and verification process.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Client
-    participant Auth as Auth Service
+    participant Auth as Authentication Service
     participant Token as token Helper
     participant API as Protected Microservice
 
-    Note over Auth,Token: 1. Token Generation (Issuance)
+    Note over Auth,Token: 1. Token Generation
     Auth->>Token: GenerateES256JWT(privKey, claims)
-    Token->>Token: Serialize Header (alg: ES256) & Claims via Sonic
+    Token->>Token: Encode Header (alg: ES256) and Claims using Sonic
     Token->>Token: Base64URL encode header and claims
-    Token->>Token: SHA-256 Hash -> Sign with ECDSA P-256 Private Key
+    Token->>Token: Sign SHA-256 hash using ECDSA P-256 private key
     Token->>Token: Concatenate Header.Payload.Signature
-    Token-->>Auth: Signed JWT String
-    Auth-->>Client: Return JWT in HTTP response / cookie
+    Token-->>Auth: Signed JWT string
+    Auth-->>Client: Return JWT in HTTP response
 
-    Note over Client,API: 2. Protected Request & Verification
+    Note over Client,API: 2. Token Verification
     Client->>API: GET /api/v1/resource (Authorization: Bearer <jwt>)
-    API->>Token: VerifyES256JWT[UserPayload](pubKey, tokenStr)
-    Token->>Token: Split token into 3 dot-separated segments
-    Token->>Token: Verify Header contains alg == "ES256"
-    Token->>Token: Verify ECDSA Signature with Public Key
-    Token->>Token: Check ExpiredAt & NotBefore timestamps
-    Token->>Token: Unmarshal data into generic type T
-    Token-->>API: Validated JWTClaims[UserPayload]
+    API->>Token: VerifyES256JWT[UserPayload](pubKey, tokenStr, WithRequireExpiresAt())
+    Token->>Token: Split token into three dot-separated parts
+    Token->>Token: Check Header algorithm matches ES256
+    Token->>Token: Check ECDSA signature using public key
+    Token->>Token: Check expiration claim exists and is not expired
+    Token->>Token: Unmarshal data claim into generic type T
+    Token-->>API: Validated JWTClaims[UserPayload] struct
     API-->>Client: 200 OK (Protected Resource)
 ```
 
+### Procedural Steps (ASD-STE100)
+1. Call `token.GenerateES256JWT` with an ECDSA private key and claims.
+2. The function serializes the header and claims into JSON.
+3. The function signs the token hash using the ECDSA P-256 private key.
+4. Pass incoming bearer tokens to `token.VerifyES256JWT` with the public key.
+5. The helper checks that the header algorithm matches `ES256`.
+6. The helper verifies the digital signature using the public key.
+7. If `WithRequireExpiresAt()` is active, the helper confirms the token has an expiration timestamp.
+8. The helper decodes the data claim into the target generic type.
+
 ---
 
-## 📖 Quickstart & Examples
+## 2. Usage Examples
 
-### 1. Generating a Typed JWT
+### 2.1 Generating a Typed JWT
 
 ```go
 import (
@@ -63,52 +66,40 @@ type UserPayload struct {
 	Roles  []string `json:"roles"`
 }
 
-// Generate P-256 key pair (or load from PEM)
+// Generate P-256 key pair
 privKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 claims := token.JWTClaims[UserPayload]{
-	Subject:   "usr_12345",
+	Subject:   "usr_101",
 	ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
 	IssuedAt:  time.Now().Unix(),
 	Data: UserPayload{
-		UserID: "usr_12345",
-		Roles:  []string{"admin", "member"},
+		UserID: "usr_101",
+		Roles:  []string{"admin"},
 	},
 }
 
 tokenString, err := token.GenerateES256JWT(privKey, claims)
 ```
 
-### 2. Verifying and Extracting Claims
+### 2.2 Verifying Tokens with Options
 
 ```go
 pubKey := &privKey.PublicKey
 
-// Standard verification
-validatedClaims, err := token.VerifyES256JWT[UserPayload](pubKey, tokenString)
+validatedClaims, err := token.VerifyES256JWT[UserPayload](
+	pubKey,
+	tokenString,
+	token.WithClockSkew(30*time.Second),      // Allows up to 30s clock drift
+	token.WithExpectedIssuer("auth-service"),  // Checks 'iss' claim
+	token.WithExpectedAudience("mobile-app"),  // Checks 'aud' claim
+	token.WithRequireExpiresAt(),             // Rejects tokens missing 'exp' claim
+)
 if err != nil {
-	// Handle token.ErrTokenExpired, token.ErrInvalidSignature, etc.
+	// Handle ErrTokenExpired, ErrMissingExpiresAt, or ErrInvalidSignature
 	return
 }
 
 user := validatedClaims.Data
-// user.UserID == "usr_12345"
-```
-
-### 3. Verification with Functional Options (`VerifyOption`)
-
-Accommodate distributed clock differences (clock skew) and enforce issuer/audience claims:
-
-```go
-validatedClaims, err := token.VerifyES256JWT[UserPayload](
-	pubKey,
-	tokenString,
-	token.WithClockSkew(30*time.Second),      // Tolerates up to 30s clock drift across microservices
-	token.WithExpectedIssuer("auth-service"),  // Validates 'iss' claim matches
-	token.WithExpectedAudience("mobile-app"),  // Validates 'aud' claim matches
-)
-if err != nil {
-	// Handles ErrIssuerMismatch, ErrAudienceMismatch, ErrTokenExpired, etc.
-	return
-}
+// user.UserID == "usr_101"
 ```

@@ -5,6 +5,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -178,11 +179,22 @@ func (c *Cache[K, V]) GetOrCompute(
 	c.flights[key] = call
 	c.flightMu.Unlock()
 
+	var panicked bool
+	var panicVal any
+
 	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+			panicVal = r
+			call.err = fmt.Errorf("cache: computation panicked: %v", r)
+		}
 		c.flightMu.Lock()
 		delete(c.flights, key)
 		c.flightMu.Unlock()
 		call.wg.Done()
+		if panicked {
+			panic(panicVal)
+		}
 	}()
 
 	val, err := fn(ctx)

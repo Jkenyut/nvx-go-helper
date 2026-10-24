@@ -1,18 +1,18 @@
 # Pointer Helper (`/pointer`)
 
-Generic utility to convert literal values and primitives into pointers safely.
+The pointer package converts primitive literal values into pointers and provides safe dereferencing functions.
 
-## 📖 Quickstart & Examples
+## 1. Usage Examples
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/pointer"
 
-// Convert literals into pointers
-isActive := pointer.Of(true)       // *bool
-maxRetries := pointer.Of(5)        // *int
-status := pointer.Of("active")     // *string
+// Convert literal values into pointers
+isActive := pointer.Of(true)   // *bool
+maxRetries := pointer.Of(5)    // *int
+status := pointer.Of("active") // *string
 
-// Safe dereference with fallback default
+// Read pointers with fallback values
 val := pointer.Get(isActive, false) // true
 nilVal := pointer.Get[int](nil, 10) // 10
 ```

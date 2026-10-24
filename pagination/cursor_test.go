@@ -397,4 +397,3 @@ func BenchmarkBuildDynamicKeyset_Composite(b *testing.B) {
 		_, _ = BuildDynamicKeyset(cols, ops, vals)
 	}
 }
-

@@ -1,24 +1,24 @@
 # Environment Helper (`/env`)
 
-Type-safe environment variable parsing with clean fallback defaults.
+The env package reads environment variables and provides fallback values when keys are missing.
 
-## 📖 Quickstart & Examples
+## 1. Usage Examples
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/env"
 
-// String fallback
+// Read string value with fallback
 dbHost := env.GetString("DB_HOST", "127.0.0.1")
 
-// Integer fallback
+// Read integer value with fallback
 port := env.GetInt("PORT", 8080)
 
-// Boolean fallback (parses "true", "1", "yes", "on")
+// Read boolean value with fallback
 debug := env.GetBool("DEBUG", false)
 
-// Float64 fallback
+// Read float64 value with fallback
 rate := env.GetFloat64("RATE_LIMIT", 100.5)
 
-// Comma-separated list fallback
+// Read comma-separated string list with fallback
 corsOrigins := env.GetSlice("CORS_ORIGINS", []string{"*"})
 ```

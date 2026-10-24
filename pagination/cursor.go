@@ -509,7 +509,6 @@ func BuildKeysetQuery(req DynamicCursorRequest, cfg KeysetConfig) (KeysetQuery, 
 	}, nil
 }
 
-
 // BuildKeysetQuery builds a KeysetQuery directly on DynamicCursorRequest.
 func (r DynamicCursorRequest) BuildKeysetQuery(cfg KeysetConfig) (KeysetQuery, error) {
 	return BuildKeysetQuery(r, cfg)

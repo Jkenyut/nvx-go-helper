@@ -1,23 +1,27 @@
 # Format Helper (`/format`)
 
-String, currency, and date formatting utilities: Indonesian Rupiah formatting, rune-safe string truncation, keyword masking, and calendar boundaries.
+The format package formats Indonesian Rupiah, masks sensitive strings, truncates UTF-8 text, and calculates date boundaries.
 
-## 📖 Quickstart & Examples
+## 1. Usage Examples
 
 ```go
-import "github.com/Jkenyut/nvx-go-helper/format"
+import (
+	"time"
 
-// 1. Indonesian Rupiah formatting
+	"github.com/Jkenyut/nvx-go-helper/format"
+)
+
+// 1. Format Indonesian Rupiah currency
 rupiah := format.FormatRupiah(1500000) // "Rp 1.500.000"
 
-// 2. Sensitive Keyword Masking
+// 2. Mask sensitive strings
 maskedEmail := format.MaskEmail("budi.santoso@example.com") // "bu***so@example.com"
 maskedPhone := format.MaskPhone("081234567890")             // "0812****7890"
 
-// 3. Rune-Safe Truncation (Preserves multi-byte UTF-8 safely)
+// 3. Truncate multi-byte UTF-8 strings safely
 short := format.Truncate("Belajar Pemrograman Go", 10, "...") // "Belajar..."
 
-// 4. Date Boundaries
+// 4. Calculate calendar date boundaries
 startOfDay := format.StartOfDay(time.Now())
 endOfMonth := format.EndOfMonth(time.Now())
 ```

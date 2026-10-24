@@ -187,8 +187,9 @@ func decodePHCHash(encodedHash string) (p Params, salt, hash []byte, err error) 
 		}
 	}
 
-	// Sanity bounds check to protect against DoS / memory exhaustion
-	if p.Memory < 8 || p.Memory > 1024*1024 || p.Iterations < 1 || p.Iterations > 100 || p.Parallelism < 1 {
+	// Sanity bounds check to protect against DoS / memory exhaustion (max 128 MiB)
+	const maxMemoryKiB = 128 * 1024
+	if p.Memory < 8 || p.Memory > maxMemoryKiB || p.Iterations < 1 || p.Iterations > 100 || p.Parallelism < 1 {
 		return p, nil, nil, ErrInvalidParams
 	}
 

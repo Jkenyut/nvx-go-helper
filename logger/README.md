@@ -1,54 +1,67 @@
 # Logger Helper (`/logger`)
 
-Structured logging wrapper integrating **Zerolog** with asynchronous diode ring-buffer, environment-aware output formatting, OpenTelemetry trace context correlation, and standard library `log/slog` interoperability.
+The logger package wraps Zerolog to provide structured logging, diode ring buffers, OpenTelemetry trace extraction, and standard library `log/slog` handlers.
 
-## 🌟 Highlights
+## 1. Logging Pipeline Architecture
 
-- **Functional Options (`logger.Init`)**: Clean, flexible configuration without requiring rigid structs.
-- **Environment-Aware**: Automatically outputs pretty colored logs to `stderr` in development, and high-throughput JSON to `stdout` in production.
-- **Diode Ring-Buffer**: High-performance asynchronous non-blocking log writer prevents slow disk or stdout I/O from stalling HTTP requests.
-- **OTel & Activity Context**: Automatically extracts `trace_id`, `span_id`, `request_id`, `correlation_id`, `user_id`, and custom metadata from `context.Context`.
-- **Stdlib Slog Bridge**: `logger.Slog()` converts the Zerolog logger to standard Go `*slog.Logger` for seamless compatibility with third-party drivers.
+The diagram below shows context extraction, diode buffering, and output sinks.
 
-## 📖 Quickstart & Examples
+```mermaid
+flowchart TD
+    LogCall(["Call logger.Info(ctx) or logger.Slog()"]) --> ContextExtract["Extract TraceID, RequestID, and Activity Metadata"]
+    ContextExtract --> CheckHandler{"Logger Target"}
 
-### 1. Modern Initialization with Functional Options
+    CheckHandler -- Zerolog Call --> FormatEvent["Create Zerolog Event with Fields"]
+    CheckHandler -- slog Call --> HandleRecord["Process Record with Slog Handler and Groups"]
+
+    FormatEvent & HandleRecord --> CheckEnv{"Environment Setting"}
+
+    CheckEnv -- Production --> DiodeBuffer["Write to Non-blocking Diode Ring Buffer"]
+    DiodeBuffer --> JSONSink["Flush JSON Lines to stdout"]
+
+    CheckEnv -- Development --> ConsoleSink["Format Colored Output to stderr"]
+```
+
+### Procedural Steps (ASD-STE100)
+1. Initialize the logger with `logger.Init` and functional options.
+2. Provide the service name, environment, and optional port.
+3. Call `defer logger.Close()` in `main.go` to flush pending log entries.
+4. Pass the context to `logger.Info(ctx)` to attach trace and activity identifiers.
+5. Use `logger.Slog()` or `logger.SlogWithContext(ctx)` when libraries require a `*slog.Logger`.
+
+---
+
+## 2. Usage Examples
+
+### 2.1 Initialization
 
 ```go
 import (
 	"context"
+
 	"github.com/Jkenyut/nvx-go-helper/logger"
 )
 
-// Initialize with functional options
+// Initialize logger with functional options
 logger.Init(
 	logger.WithServiceName("user-service"),
-	logger.WithEnv("production"), // "production" -> JSON to stdout; "development" -> console to stderr
+	logger.WithEnv("production"),
 	logger.WithPort(8080),
-	logger.WithLevel("info"),     // Optional: override log level
+	logger.WithLevel("info"),
 )
 defer logger.Close()
 
-// Context-aware logging (auto-attaches trace_id, request_id, correlation_id, user_id)
-logger.Info(ctx).Str("action", "checkout").Msg("order placed successfully")
+// Context-aware log with automatic trace extraction
+logger.Info(ctx).Str("action", "checkout").Msg("order placed")
 ```
 
-### 2. Available Options
-
-- `logger.WithServiceName(name string)`: Sets the service name attribute in every log line.
-- `logger.WithEnv(env string)`: Sets the environment (`production`, `development`, `staging`).
-- `logger.WithPort(port int)`: Sets the listening port metadata.
-- `logger.WithLevel(level string)`: Sets the log level (`debug`, `info`, `warn`, `error`, `fatal`).
-- `logger.WithBufferSize(size int)`: Overrides the diode ring-buffer queue capacity (default: 10,000 for prod, 1,000 for dev).
-- `logger.WithWriter(w io.Writer)`: Sets a custom log sink writer (ideal for unit testing or custom file sinks).
-
-### 3. Standard Library `slog` Interoperability
+### 2.2 Standard Library `log/slog` Interoperability
 
 ```go
-// Obtain a standard library *slog.Logger backed by the high-performance Zerolog diode
-driverLogger := logger.Slog()
+// Obtain a standard library *slog.Logger backed by Zerolog
+appSlog := logger.Slog()
 
-// Or with contextual tracing:
+// Or with request context extraction
 reqSlog := logger.SlogWithContext(ctx)
-reqSlog.Info("processing database migration", "table", "users")
+reqSlog.Info("processing transaction", "account_id", 101)
 ```

@@ -45,65 +45,107 @@ type Activity struct {
 }
 
 // WithCorrelationID adds a correlation ID to the context.
-// Used by middleware or when initiating a new business transaction.
+// It returns a new context with the correlation ID.
+// It creates a background context if ctx is nil.
 func WithCorrelationID(ctx context.Context, trxID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, correlationID, trxID)
 }
 
 // GetCorrelationID retrieves the correlation ID from the context.
+// It returns an empty string and false if ctx is nil or key is missing.
 func GetCorrelationID(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
 	trxID, ok := ctx.Value(correlationID).(string)
 	return trxID, ok
 }
 
 // WithRequestID adds a request ID to the context.
-// Useful for tracing per-hop HTTP requests.
+// It creates a background context if ctx is nil.
 func WithRequestID(ctx context.Context, reqID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, requestID, reqID)
 }
 
 // GetRequestID retrieves the request ID from the context.
+// It returns an empty string and false if ctx is nil or key is missing.
 func GetRequestID(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
 	v, ok := ctx.Value(requestID).(string)
 	return v, ok
 }
 
 // WithUserID adds a user ID to the context.
-// Typically set by authentication middleware.
+// It creates a background context if ctx is nil.
 func WithUserID(ctx context.Context, uid string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, userID, uid)
 }
 
 // GetUserID retrieves the user ID from the context.
+// It returns an empty string and false if ctx is nil or key is missing.
 func GetUserID(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
 	v, ok := ctx.Value(userID).(string)
 	return v, ok
 }
 
 // WithUserIP adds a user IP address to the context.
+// It creates a background context if ctx is nil.
 func WithUserIP(ctx context.Context, uip string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, userIP, uip)
 }
 
 // GetUserIP retrieves the user IP address from the context.
+// It returns an empty string and false if ctx is nil or key is missing.
 func GetUserIP(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
 	v, ok := ctx.Value(userIP).(string)
 	return v, ok
 }
 
-// WithUserIPOrigin adds the original user IP (from proxy) to the context.
+// WithUserIPOrigin adds the original user IP to the context.
+// It creates a background context if ctx is nil.
 func WithUserIPOrigin(ctx context.Context, uip string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, userIPOrigin, uip)
 }
 
-// GetUserIPOrigin retrieves the user IP address from the context.
+// GetUserIPOrigin retrieves the original user IP address from the context.
+// It returns an empty string and false if ctx is nil or key is missing.
 func GetUserIPOrigin(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
 	v, ok := ctx.Value(userIPOrigin).(string)
 	return v, ok
 }
 
-// WithActivity injects all non-empty fields of an Activity struct into the context.
+// WithActivity injects standard activity fields into the context.
+// It creates a background context if ctx is nil.
 func WithActivity(ctx context.Context, act Activity) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if act.CorrelationID != "" {
 		ctx = WithCorrelationID(ctx, act.CorrelationID)
 	}
@@ -122,8 +164,12 @@ func WithActivity(ctx context.Context, act Activity) context.Context {
 	return ctx
 }
 
-// FromContext extracts all standard activity fields from context into an Activity struct.
+// FromContext extracts standard activity fields from context into Activity struct.
+// It returns an empty struct if ctx is nil.
 func FromContext(ctx context.Context) Activity {
+	if ctx == nil {
+		return Activity{}
+	}
 	var act Activity
 	act.CorrelationID, _ = GetCorrelationID(ctx)
 	act.RequestID, _ = GetRequestID(ctx)
@@ -133,16 +179,21 @@ func FromContext(ctx context.Context) Activity {
 	return act
 }
 
-// WithCustomFields adds any key-value pair to the context using a typed key
-// to prevent collisions with other packages.
-// Use specific functions above when possible for standard fields.
+// WithCustomFields adds a key-value pair to the context.
+// It creates a background context if ctx is nil.
 func WithCustomFields(ctx context.Context, k string, value any) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, customKey(k), value)
 }
 
 // GetCustomField retrieves a custom field value from the context.
-// The key must match the one used in WithCustomFields.
+// It returns nil and false if ctx is nil or key is missing.
 func GetCustomField(ctx context.Context, k string) (any, bool) {
+	if ctx == nil {
+		return nil, false
+	}
 	v := ctx.Value(customKey(k))
 	if v == nil {
 		return nil, false
@@ -152,7 +203,11 @@ func GetCustomField(ctx context.Context, k string) (any, bool) {
 
 // WithMetadata attaches an arbitrary metadata map to the context.
 // If metadata already exists in the context, new entries will be merged.
+// It creates a background context if ctx is nil.
 func WithMetadata(ctx context.Context, metadata map[string]any) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if len(metadata) == 0 {
 		return ctx
 	}
@@ -168,14 +223,21 @@ func WithMetadata(ctx context.Context, metadata map[string]any) context.Context 
 }
 
 // GetMetadata retrieves the custom metadata map from context.
+// It returns nil and false if ctx is nil or metadata is missing.
 func GetMetadata(ctx context.Context) (map[string]any, bool) {
+	if ctx == nil {
+		return nil, false
+	}
 	v, ok := ctx.Value(metadataKey{}).(map[string]any)
 	return v, ok
 }
 
-// GetAllFieldsFromContext collects all standard activity fields and attached metadata into a map.
-// Useful for structured logging setup (e.g. Zerolog Fields, Logrus/Zap fields).
+// GetAllFieldsFromContext collects standard activity fields and metadata into a map.
+// It returns an empty map if ctx is nil.
 func GetAllFieldsFromContext(ctx context.Context) map[string]any {
+	if ctx == nil {
+		return make(map[string]any)
+	}
 	meta, hasMeta := GetMetadata(ctx)
 	capHint := 5
 	if hasMeta {
@@ -183,7 +245,6 @@ func GetAllFieldsFromContext(ctx context.Context) map[string]any {
 	}
 	fields := make(map[string]any, capHint)
 
-	// Copy custom metadata if present
 	for k, v := range meta {
 		fields[k] = v
 	}
@@ -207,9 +268,12 @@ func GetAllFieldsFromContext(ctx context.Context) map[string]any {
 	return fields
 }
 
-// ToSlogAttrs extracts all standard activity fields from context as a slice of slog.Attr.
-// It enables zero-allocation, high-performance integration with Go's log/slog package.
+// ToSlogAttrs extracts all standard activity fields from context as slog attributes.
+// It returns an empty slice if ctx is nil.
 func ToSlogAttrs(ctx context.Context) []slog.Attr {
+	if ctx == nil {
+		return make([]slog.Attr, 0)
+	}
 	attrs := make([]slog.Attr, 0, 5)
 
 	if v, ok := GetCorrelationID(ctx); ok {
@@ -232,7 +296,12 @@ func ToSlogAttrs(ctx context.Context) []slog.Attr {
 }
 
 // GetFieldValueFromContext is a generic helper to retrieve any value from context safely.
+// It returns zero value and false if ctx or k is nil.
 func GetFieldValueFromContext[T any](ctx context.Context, k any) (T, bool) {
+	var zero T
+	if ctx == nil || k == nil {
+		return zero, false
+	}
 	u, ok := ctx.Value(k).(T)
 	return u, ok
 }

@@ -420,5 +420,3 @@ func BenchmarkBindUnifiedFilterRequest(b *testing.B) {
 		_ = pagination.BindUnifiedFilterRequest(r, allowed)
 	}
 }
-
-

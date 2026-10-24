@@ -160,7 +160,6 @@ func ExtractFiltersAndSearch(r *http.Request, allowedFilters map[string]string) 
 	return extractFiltersAndSearchFromQuery(r.URL.Query(), allowedFilters)
 }
 
-
 // FilterRequest represents any filter-enabled pagination request (Offset, Cursor, or Unified).
 type FilterRequest interface {
 	HasFilter(col string) bool
@@ -533,4 +532,3 @@ func BindUnifiedFilterRequest(r *http.Request, allowedFilters map[string]string,
 		CursorErr:    cursorErr,
 	}
 }
-

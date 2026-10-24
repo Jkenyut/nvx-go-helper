@@ -262,6 +262,20 @@ func TestGetClientIP_EdgeCases(t *testing.T) {
 	assert.Empty(t, GetClientIP(reqInvalid))
 }
 
+func TestGetClientIP_TrustedProxies(t *testing.T) {
+	// RemoteAddr is NOT in trusted proxies: untrusted header spoofing ignored
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	req.RemoteAddr = "198.51.100.1:54321"
+	req.Header.Set("X-Forwarded-For", "10.0.0.99")
+	assert.Equal(t, "198.51.100.1", GetClientIP(req, "127.0.0.1", "10.0.0.1"))
+
+	// RemoteAddr IS in trusted proxies: forwarding header accepted
+	reqTrusted := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	reqTrusted.RemoteAddr = "10.0.0.1:54321"
+	reqTrusted.Header.Set("X-Forwarded-For", "203.0.113.55, 10.0.0.1")
+	assert.Equal(t, "203.0.113.55", GetClientIP(reqTrusted, "127.0.0.1", "10.0.0.1"))
+}
+
 func TestGetQueryString_DoesNotDrainBody(t *testing.T) {
 	body := bytes.NewBufferString(`{"name":"budi","age":25}`)
 	req := httptest.NewRequest(http.MethodPost, "/?filter=active", body)

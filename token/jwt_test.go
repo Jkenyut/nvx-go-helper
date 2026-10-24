@@ -231,5 +231,15 @@ func TestVerifyES256JWT_WithOptions(t *testing.T) {
 	if !errors.Is(err, ErrAudienceMismatch) {
 		t.Errorf("expected ErrAudienceMismatch, got %v", err)
 	}
-}
 
+	// Require ExpiresAt test
+	noExpClaims := StandardClaims{Subject: "user-no-exp"}
+	noExpToken, err := GenerateES256JWT(privKey, noExpClaims)
+	if err != nil {
+		t.Fatalf("failed to generate no-exp token: %v", err)
+	}
+	_, err = VerifyES256JWT[any](pubKey, noExpToken, WithRequireExpiresAt())
+	if !errors.Is(err, ErrMissingExpiresAt) {
+		t.Errorf("expected ErrMissingExpiresAt, got %v", err)
+	}
+}

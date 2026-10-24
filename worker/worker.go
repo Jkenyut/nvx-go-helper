@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -145,8 +146,11 @@ func Stream[K comparable, T any, R any](
 			outCh := make(chan Result[K, R], len(jobs))
 			go func() {
 				err := fmt.Errorf("duplicate job ID detected: %v (all jobs rejected)", job.ID)
-				for _, j := range jobs {
+				for i, j := range jobs {
 					outCh <- Result[K, R]{ID: j.ID, Err: err}
+					if cfg.onProgress != nil {
+						cfg.onProgress(i+1, len(jobs))
+					}
 				}
 				close(outCh)
 			}()
@@ -164,8 +168,11 @@ func Stream[K comparable, T any, R any](
 			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
 				errToSend = fmt.Errorf("%w: %w", ErrSkipped, cause)
 			}
-			for _, job := range jobs {
+			for i, job := range jobs {
 				outCh <- Result[K, R]{ID: job.ID, Err: errToSend}
+				if cfg.onProgress != nil {
+					cfg.onProgress(i+1, len(jobs))
+				}
 			}
 			close(outCh)
 		}()
@@ -195,8 +202,15 @@ func Stream[K comparable, T any, R any](
 	var workerWG sync.WaitGroup
 	var feederWG sync.WaitGroup
 
+	var progressCount atomic.Int64
+	totalJobs := len(jobs)
+
 	sendResult := func(result Result[K, R]) {
 		outCh <- result
+		if cfg.onProgress != nil {
+			completed := int(progressCount.Add(1))
+			cfg.onProgress(completed, totalJobs)
+		}
 	}
 
 	getSkipErr := func() error {
@@ -309,8 +323,6 @@ func Run[K comparable, T any, R any](
 
 	var results []Result[K, R]
 	var errs []error
-	var completed int
-	total := len(jobs)
 
 	if cfg.preserveOrder {
 		results = make([]Result[K, R], len(jobs))
@@ -325,10 +337,6 @@ func Run[K comparable, T any, R any](
 			if res.Err != nil {
 				errs = append(errs, res.Err)
 			}
-			if cfg.onProgress != nil {
-				completed++
-				cfg.onProgress(completed, total)
-			}
 		}
 	} else {
 		results = make([]Result[K, R], 0, len(jobs))
@@ -336,10 +344,6 @@ func Run[K comparable, T any, R any](
 			results = append(results, res)
 			if res.Err != nil {
 				errs = append(errs, res.Err)
-			}
-			if cfg.onProgress != nil {
-				completed++
-				cfg.onProgress(completed, total)
 			}
 		}
 	}

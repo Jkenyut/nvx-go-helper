@@ -362,6 +362,14 @@ func Panic(ctx context.Context) *zerolog.Event { return Ctx(ctx).Panic() }
 // zerologSlogHandler adapts zerolog to slog.Handler
 type zerologSlogHandler struct {
 	logger *zerolog.Logger
+	groups []string
+}
+
+func (h *zerologSlogHandler) resolveKey(key string) string {
+	if len(h.groups) == 0 {
+		return key
+	}
+	return strings.Join(h.groups, ".") + "." + key
 }
 
 func (h *zerologSlogHandler) Enabled(_ context.Context, level slog.Level) bool {
@@ -400,19 +408,20 @@ func (h *zerologSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	r.Attrs(func(a slog.Attr) bool {
 		val := a.Value.Any()
+		key := h.resolveKey(a.Key)
 		switch v := val.(type) {
 		case error:
-			e = e.AnErr(a.Key, v)
+			e = e.AnErr(key, v)
 		case json.RawMessage:
-			e = e.RawJSON(a.Key, v)
+			e = e.RawJSON(key, v)
 		case []byte:
 			if sonic.Valid(v) {
-				e = e.RawJSON(a.Key, v)
+				e = e.RawJSON(key, v)
 			} else {
-				e = e.Bytes(a.Key, v)
+				e = e.Bytes(key, v)
 			}
 		default:
-			e = e.Any(a.Key, val)
+			e = e.Any(key, val)
 		}
 		return true
 	})
@@ -424,12 +433,22 @@ func (h *zerologSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 func (h *zerologSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	sub := h.logger.With()
 	for _, a := range attrs {
-		sub = sub.Any(a.Key, a.Value.Any())
+		sub = sub.Any(h.resolveKey(a.Key), a.Value.Any())
 	}
 	l := sub.Logger()
-	return &zerologSlogHandler{logger: &l}
+	return &zerologSlogHandler{logger: &l, groups: h.groups}
 }
 
-func (h *zerologSlogHandler) WithGroup(_ string) slog.Handler {
-	return h
+func (h *zerologSlogHandler) WithGroup(name string) slog.Handler {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return h
+	}
+	newGroups := make([]string, len(h.groups)+1)
+	copy(newGroups, h.groups)
+	newGroups[len(h.groups)] = trimmed
+	return &zerologSlogHandler{
+		logger: h.logger,
+		groups: newGroups,
+	}
 }

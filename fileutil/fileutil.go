@@ -72,9 +72,14 @@ func IsSafeDocument(data []byte) bool {
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 		"application/vnd.ms-powerpoint",
 		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
-		"text/plain",
-		"text/csv",
 		"application/rtf":
+		return true
+	case "text/plain", "text/csv":
+		if bytes.HasPrefix(data, []byte("#!")) ||
+			bytes.Contains(data, []byte("<?php")) ||
+			bytes.Contains(data, []byte("<script")) {
+			return false
+		}
 		return true
 	default:
 		return false

@@ -1,74 +1,73 @@
 # Activity Helper (`/activity`)
 
-Context-based request metadata propagation designed for end-to-end tracing and structured logging across microservices.
+The activity package stores request metadata in Go contexts and exports fields for structured loggers.
 
-## 🚀 Key Features
+## 1. Metadata Propagation Flow
 
-- **Context-Bound Metadata**: Thread-safe storage and propagation of `request_id`, `correlation_id`, `user_id`, `user_ip`, and arbitrary custom key-value pairs.
-- **Dual Logger Support**: Seamless zero-allocation conversion into **Zerolog** fields and Go 1.21+ **`log/slog`** attributes (`slog.Attr`).
-- **No Global State**: Strictly scopes values to the request lifecycle via `context.Context`.
-
----
-
-## 📡 Metadata Propagation Flow (Data Flowchart)
+The diagram below shows metadata injection and logger attribute export.
 
 ```mermaid
 flowchart LR
-    Incoming([Incoming HTTP Request]) --> Middleware[HTTP Middleware]
-    
-    subgraph ContextSetup ["Context Population"]
-        Middleware --> ExtractHeaders[Extract X-Request-ID, User Token, Client IP]
-        ExtractHeaders --> WithActivity[activity.WithActivity ctx, act]
+    Incoming(["Incoming HTTP Request"]) --> Middleware["HTTP Middleware"]
+
+    subgraph ContextSetup ["Context Storage"]
+        Middleware --> ExtractHeaders["Extract Request Headers and Client IP"]
+        ExtractHeaders --> WithActivity["Call activity.WithActivity(ctx, act)"]
     end
 
-    ContextSetup --> BusinessLogic[Business Logic / Services]
+    ContextSetup --> BusinessLogic["Business Logic Services"]
 
-    subgraph Observability ["Logging & Tracing Integration"]
-        BusinessLogic --> SlogAttrs[activity.ToSlogAttrs ctx]
-        BusinessLogic --> ZerologFields[activity.GetAllFieldsFromContext ctx]
-        SlogAttrs --> SlogEngine[log/slog.LogAttrs]
-        ZerologFields --> ZerologEngine[zerolog.Info.Fields]
+    subgraph Observability ["Logging Export"]
+        BusinessLogic --> SlogAttrs["Call activity.ToSlogAttrs(ctx)"]
+        BusinessLogic --> ZerologFields["Call activity.GetAllFieldsFromContext(ctx)"]
+        SlogAttrs --> SlogEngine["slog.LogAttrs()"]
+        ZerologFields --> ZerologEngine["zerolog.Logger.Fields()"]
     end
 
-    BusinessLogic --> Outgoing([Outgoing Microservice HTTP/gRPC Calls])
-    Outgoing -. Propagate X-Request-ID .-> Downstream[Downstream Services]
+    BusinessLogic --> Outgoing(["Outgoing HTTP or gRPC Requests"])
 ```
+
+### Procedural Steps (ASD-STE100)
+1. Extract request identifiers and client IP addresses in your HTTP middleware.
+2. Store the metadata in the request context using `activity.WithActivity`.
+3. Read metadata downstream using `activity.FromContext` or field-specific getters.
+4. Export metadata to slog using `activity.ToSlogAttrs`.
+5. Export metadata to Zerolog using `activity.GetAllFieldsFromContext`.
 
 ---
 
-## 📖 Quickstart & Examples
+## 2. Usage Examples
 
-### 1. Storing Metadata in Context
+### 2.1 Storing Metadata in Context
 
 ```go
 import (
 	"context"
+
 	"github.com/Jkenyut/nvx-go-helper/activity"
 )
 
-// Inject individual fields:
-ctx := activity.WithRequestID(r.Context(), "req-12345")
-ctx = activity.WithCorrelationID(ctx, "corr-abc-789")
-ctx = activity.WithUserID(ctx, "user-999")
-ctx = activity.WithUserIP(ctx, "203.0.113.195")
-
-// Or inject a batch activity struct:
-ctx = activity.WithActivity(ctx, activity.Activity{
-	RequestID:     "req-12345",
-	CorrelationID: "corr-abc-789",
-	UserID:        "user-999",
-	UserIP:        "203.0.113.195",
+// Store metadata using the Activity struct
+ctx := activity.WithActivity(context.Background(), activity.Activity{
+	RequestID:     "req-101",
+	CorrelationID: "corr-202",
+	UserID:        "user-303",
+	UserIP:        "192.168.1.1",
 })
+
+// Read individual fields
+userID, ok := activity.GetUserID(ctx)
+act := activity.FromContext(ctx)
 ```
 
-### 2. Structured Logging with slog or Zerolog
+### 2.2 Structured Logging Integration
 
 ```go
-// Native Go log/slog (zero allocations):
+// Export to native log/slog
 attrs := activity.ToSlogAttrs(ctx)
-slog.LogAttrs(ctx, slog.LevelInfo, "transaction initiated", attrs...)
+slog.LogAttrs(ctx, slog.LevelInfo, "payment processed", attrs...)
 
-// Zerolog:
+// Export to Zerolog
 fields := activity.GetAllFieldsFromContext(ctx)
-log.Info().Fields(fields).Msg("user action processed")
+log.Info().Fields(fields).Msg("user updated")
 ```

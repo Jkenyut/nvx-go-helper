@@ -33,4 +33,22 @@ func TestSignature(t *testing.T) {
 	if sig == sigDifferentData {
 		t.Errorf("Signature should change with different data")
 	}
+
+	// Test 5: Delimiter Collision Resistance (length prefix protection)
+	sigCollisionA := Signature(secret, "user", "admin")
+	sigCollisionB := Signature(secret, "userad", "min")
+	if sigCollisionA == sigCollisionB {
+		t.Errorf("Canonicalization collision detected: signature parts must not collide")
+	}
+
+	// Test 6: VerifySignature Constant-Time Verification
+	if !VerifySignature(secret, sig, data1, data2) {
+		t.Errorf("VerifySignature should succeed for valid signature")
+	}
+	if VerifySignature(secret, "invalidhexsig", data1, data2) {
+		t.Errorf("VerifySignature should fail for invalid signature")
+	}
+	if VerifySignature("wrongsecret", sig, data1, data2) {
+		t.Errorf("VerifySignature should fail for wrong secret")
+	}
 }

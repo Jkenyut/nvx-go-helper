@@ -340,25 +340,28 @@ func (r Response) JSONMarshal() []byte {
 	return resp
 }
 
-// JSONEncoder writes the JSON encoding of Response to the stream.
+// JSONEncoder writes the JSON encoding of Response to the stream safely without partial write corruption.
 func (r Response) JSONEncoder(w io.Writer) {
 	if r.Meta.StatusCode == 0 {
 		r.Meta.StatusCode = 200
 	}
 
-	enc := sonic.ConfigDefault.NewEncoder(w)
-	if err := enc.Encode(r); err != nil {
+	b, err := sonic.Marshal(r)
+	if err != nil {
 		fallback := Response{
 			Meta: Meta{
 				Success:    false,
 				Message:    "internal server error: failed to encode response data",
 				StatusCode: 500,
-				RequestID:  r.Meta.RequestID, // Preserve the request ID for tracing
+				RequestID:  r.Meta.RequestID,
 			},
 			Data: nil,
 		}
-		_ = enc.Encode(fallback)
+		fallbackBytes, _ := sonic.Marshal(fallback)
+		_, _ = w.Write(fallbackBytes)
+		return
 	}
+	_, _ = w.Write(b)
 }
 
 // WriteHTTP writes the Content-Type: application/json header, writes the HTTP status code,

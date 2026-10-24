@@ -149,6 +149,40 @@ func TestCache_GetOrCompute_Error(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestCache_GetOrCompute_Panic(t *testing.T) {
+	c := New[string, string]()
+	defer c.Close()
+
+	// Verify that caller 1 panics, while concurrent caller 2 receives the panic error cleanly
+	started := make(chan struct{})
+	var waiterErr error
+	var waiterVal string
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-started
+		time.Sleep(10 * time.Millisecond) // Ensure leader has entered computation
+		waiterVal, waiterErr = c.GetOrCompute(context.Background(), "panic_key", 1*time.Minute, func(ctx context.Context) (string, error) {
+			return "waiter_fallback", nil
+		})
+	}()
+
+	assert.Panics(t, func() {
+		_, _ = c.GetOrCompute(context.Background(), "panic_key", 1*time.Minute, func(ctx context.Context) (string, error) {
+			close(started)
+			time.Sleep(50 * time.Millisecond)
+			panic("compute fatal boom")
+		})
+	})
+
+	wg.Wait()
+	assert.Error(t, waiterErr)
+	assert.Contains(t, waiterErr.Error(), "computation panicked: compute fatal boom")
+	assert.Empty(t, waiterVal)
+}
+
 func TestCache_ConcurrentRace(t *testing.T) {
 	c := New[int, int](WithCleanupInterval(20 * time.Millisecond))
 	defer c.Close()

@@ -30,12 +30,15 @@ var (
 	ErrIssuerMismatch = errors.New("token issuer mismatch")
 	// ErrAudienceMismatch is returned when the token audience does not match the expected audience.
 	ErrAudienceMismatch = errors.New("token audience mismatch")
+	// ErrMissingExpiresAt is returned when the token lacks an expiration claim and expiration is required.
+	ErrMissingExpiresAt = errors.New("token expiration claim is required")
 )
 
 type verifyOptions struct {
 	clockSkew        time.Duration
 	expectedIssuer   string
 	expectedAudience string
+	requireExpiresAt bool
 }
 
 // VerifyOption configures token verification behavior.
@@ -62,6 +65,13 @@ func WithExpectedIssuer(issuer string) VerifyOption {
 func WithExpectedAudience(aud string) VerifyOption {
 	return func(o *verifyOptions) {
 		o.expectedAudience = strings.TrimSpace(aud)
+	}
+}
+
+// WithRequireExpiresAt enforces that the token contains a positive expiration time (exp > 0).
+func WithRequireExpiresAt() VerifyOption {
+	return func(o *verifyOptions) {
+		o.requireExpiresAt = true
 	}
 }
 
@@ -182,6 +192,9 @@ func VerifyES256JWT[T any](pubKey *ecdsa.PublicKey, tokenString string, opts ...
 	now := time.Now().Unix()
 	skewSec := int64(opt.clockSkew / time.Second)
 
+	if opt.requireExpiresAt && claims.ExpiresAt <= 0 {
+		return nil, ErrMissingExpiresAt
+	}
 	if claims.ExpiresAt > 0 && now-skewSec > claims.ExpiresAt {
 		return nil, ErrTokenExpired
 	}

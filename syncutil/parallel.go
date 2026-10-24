@@ -5,6 +5,7 @@ package syncutil
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -38,6 +39,12 @@ forEachLoop:
 			wg.Add(1)
 			go func(val T) {
 				defer func() {
+					if r := recover(); r != nil {
+						once.Do(func() {
+							firstErr = fmt.Errorf("syncutil: panic in ForEach worker: %v", r)
+							cancel()
+						})
+					}
 					<-sem
 					wg.Done()
 				}()
@@ -88,6 +95,12 @@ mapLoop:
 			wg.Add(1)
 			go func(i int, val T) {
 				defer func() {
+					if r := recover(); r != nil {
+						once.Do(func() {
+							firstErr = fmt.Errorf("syncutil: panic in Map worker: %v", r)
+							cancel()
+						})
+					}
 					<-sem
 					wg.Done()
 				}()

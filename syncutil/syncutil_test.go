@@ -190,3 +190,30 @@ func TestMap_Error(t *testing.T) {
 	assert.ErrorIs(t, err, targetErr)
 	assert.Nil(t, results)
 }
+
+func TestForEach_Panic(t *testing.T) {
+	items := []int{1, 2, 3, 4, 5}
+	err := ForEach(context.Background(), items, 2, func(ctx context.Context, item int) error {
+		if item == 3 {
+			panic("something went terribly wrong")
+		}
+		return nil
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "syncutil: panic in ForEach worker: something went terribly wrong")
+}
+
+func TestMap_Panic(t *testing.T) {
+	items := []int{1, 2, 3, 4}
+	results, err := Map(context.Background(), items, 2, func(ctx context.Context, item int) (string, error) {
+		if item == 2 {
+			panic("map panic")
+		}
+		return fmt.Sprintf("%d", item), nil
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, results)
+	assert.Contains(t, err.Error(), "syncutil: panic in Map worker: map panic")
+}

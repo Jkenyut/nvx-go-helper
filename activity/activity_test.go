@@ -230,3 +230,97 @@ func TestGetFieldValueFromContext(t *testing.T) {
 	assert.False(t, okInt)
 	assert.Equal(t, 0, gotInt)
 }
+
+func TestNilContextSafety(t *testing.T) {
+	var nilCtx context.Context
+
+	_, ok := GetCorrelationID(nilCtx)
+	assert.False(t, ok)
+
+	_, ok = GetRequestID(nilCtx)
+	assert.False(t, ok)
+
+	_, ok = GetUserID(nilCtx)
+	assert.False(t, ok)
+
+	_, ok = GetUserIP(nilCtx)
+	assert.False(t, ok)
+
+	_, ok = GetUserIPOrigin(nilCtx)
+	assert.False(t, ok)
+
+	_, ok = GetCustomField(nilCtx, "key")
+	assert.False(t, ok)
+
+	_, ok = GetMetadata(nilCtx)
+	assert.False(t, ok)
+
+	val, ok := GetFieldValueFromContext[string](nilCtx, "key")
+	assert.False(t, ok)
+	assert.Empty(t, val)
+
+	act := FromContext(nilCtx)
+	assert.Empty(t, act)
+
+	attrs := ToSlogAttrs(nilCtx)
+	assert.Empty(t, attrs)
+}
+
+func TestActivityNilContext(t *testing.T) {
+	// Guarantee no function panics on nil context
+	var nilCtx context.Context
+
+	t.Run("Getters with nil context", func(t *testing.T) {
+		got, ok := GetCorrelationID(nilCtx)
+		assert.False(t, ok)
+		assert.Empty(t, got)
+
+		got, ok = GetRequestID(nilCtx)
+		assert.False(t, ok)
+		assert.Empty(t, got)
+
+		got, ok = GetUserID(nilCtx)
+		assert.False(t, ok)
+		assert.Empty(t, got)
+
+		got, ok = GetUserIP(nilCtx)
+		assert.False(t, ok)
+		assert.Empty(t, got)
+
+		got, ok = GetUserIPOrigin(nilCtx)
+		assert.False(t, ok)
+		assert.Empty(t, got)
+
+		val, ok := GetCustomField(nilCtx, "key")
+		assert.False(t, ok)
+		assert.Nil(t, val)
+
+		meta, ok := GetMetadata(nilCtx)
+		assert.False(t, ok)
+		assert.Nil(t, meta)
+
+		fields := GetAllFieldsFromContext(nilCtx)
+		assert.Empty(t, fields)
+
+		attrs := ToSlogAttrs(nilCtx)
+		assert.Empty(t, attrs)
+
+		act := FromContext(nilCtx)
+		assert.Empty(t, act)
+
+		typed, ok := GetFieldValueFromContext[string](nilCtx, "key")
+		assert.False(t, ok)
+		assert.Empty(t, typed)
+	})
+
+	t.Run("Setters with nil context return non-nil context", func(t *testing.T) {
+		assert.NotNil(t, WithCorrelationID(nilCtx, "cid"))
+		assert.NotNil(t, WithRequestID(nilCtx, "rid"))
+		assert.NotNil(t, WithUserID(nilCtx, "uid"))
+		assert.NotNil(t, WithUserIP(nilCtx, "ip"))
+		assert.NotNil(t, WithUserIPOrigin(nilCtx, "origin"))
+		assert.NotNil(t, WithCustomFields(nilCtx, "k", "v"))
+		assert.NotNil(t, WithMetadata(nilCtx, map[string]any{"k": "v"}))
+		assert.NotNil(t, WithActivity(nilCtx, Activity{CorrelationID: "cid"}))
+	})
+}

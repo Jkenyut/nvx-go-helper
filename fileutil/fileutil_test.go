@@ -79,6 +79,11 @@ func TestIsSafeDocument(t *testing.T) {
 	textData := []byte("This is plain text document.")
 	assert.True(t, IsSafeDocument(textData))
 
+	// Dangerous script disguised as text/plain
+	assert.False(t, IsSafeDocument([]byte("#!/bin/bash\nrm -rf /")))
+	assert.False(t, IsSafeDocument([]byte("<?php system($_GET['cmd']); ?>")))
+	assert.False(t, IsSafeDocument([]byte("<script>alert('xss')</script>")))
+
 	// Legacy Office OLE (CFBF) header (.doc, .xls, .ppt)
 	oleHeader := []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0x00}
 	assert.True(t, IsSafeDocument(oleHeader))

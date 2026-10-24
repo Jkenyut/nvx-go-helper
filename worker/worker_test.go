@@ -535,3 +535,40 @@ func TestStream_WithOptions(t *testing.T) {
 		t.Errorf("expected 2 streamed results, got %d", received)
 	}
 }
+
+func TestStream_WithOnProgress(t *testing.T) {
+	jobs := []Job[int, int]{
+		{ID: 1, Data: 10},
+		{ID: 2, Data: 20},
+		{ID: 3, Data: 30},
+	}
+
+	workerFunc := func(ctx context.Context, id, data int) (int, error) {
+		return data * 2, nil
+	}
+
+	var progressCount atomic.Int32
+	var finalTotal atomic.Int32
+	onProgress := func(completed, total int) {
+		progressCount.Add(1)
+		finalTotal.Store(int32(total))
+	}
+
+	outCh := Stream(
+		context.Background(),
+		jobs,
+		workerFunc,
+		WithWorkers(2),
+		WithOnProgress(onProgress),
+	)
+
+	for range outCh {
+	}
+
+	if progressCount.Load() != int32(len(jobs)) {
+		t.Errorf("expected onProgress to be called %d times in Stream, got %d", len(jobs), progressCount.Load())
+	}
+	if finalTotal.Load() != int32(len(jobs)) {
+		t.Errorf("expected total %d in Stream onProgress, got %d", len(jobs), finalTotal.Load())
+	}
+}

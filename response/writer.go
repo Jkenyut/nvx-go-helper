@@ -21,14 +21,15 @@ func SetHeaders(w http.ResponseWriter, headers map[string]string) {
 // WriteJSONResponse writes the Response as JSON to the http.ResponseWriter.
 // It sets the appropriate status code and Content-Type header.
 func WriteJSONResponse(w http.ResponseWriter, resp Response) {
-	// Ensure status code is set
-	if resp.Meta.StatusCode == 0 {
-		resp.Meta.StatusCode = 200
+	// Marshal first to detect serialization errors before sending headers
+	body := resp.JSONMarshal()
+
+	statusCode := resp.Meta.StatusCode
+	if statusCode == 0 {
+		statusCode = http.StatusOK
 	}
-	// Set content type
+
 	w.Header().Set("Content-Type", "application/json")
-	// Write status code
-	w.WriteHeader(resp.Meta.StatusCode)
-	// Encode JSON to the writer
-	resp.JSONEncoder(w)
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(body)
 }

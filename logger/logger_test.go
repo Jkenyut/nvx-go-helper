@@ -255,6 +255,23 @@ func TestSlogRawJSON(t *testing.T) {
 	}
 }
 
+func TestSlogWithGroup(t *testing.T) {
+	var buf bytes.Buffer
+	log := zerolog.New(&buf)
+	slogHandler := &zerologSlogHandler{logger: &log}
+	slogger := slog.New(slogHandler).WithGroup("database").WithGroup("postgres")
+
+	slogger.Info("connection established", slog.String("host", "localhost"), slog.Int("port", 5432))
+
+	out := buf.String()
+	if !strings.Contains(out, `"database.postgres.host":"localhost"`) {
+		t.Errorf("expected nested group key database.postgres.host, got: %s", out)
+	}
+	if !strings.Contains(out, `"database.postgres.port":5432`) {
+		t.Errorf("expected nested group key database.postgres.port, got: %s", out)
+	}
+}
+
 func TestConsoleWriter_JSONFormatting(t *testing.T) {
 	var buf bytes.Buffer
 	cw := zerolog.ConsoleWriter{
@@ -318,4 +335,3 @@ func TestInit_WithOptions(t *testing.T) {
 		t.Errorf("expected output to contain log message, got: %s", out)
 	}
 }
-

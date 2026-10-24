@@ -66,4 +66,3 @@ func (r CursorListResponse[T]) ToUnified() UnifiedListResponse[T] {
 		Pagination: r.Pagination,
 	}
 }
-
