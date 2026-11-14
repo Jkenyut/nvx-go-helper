@@ -28,16 +28,9 @@ func SanitizeFileName(name string) string {
 	return sanitized
 }
 
-// GetMimeType detects the MIME type of a file based on its first 512 bytes (Magic Bytes).
-// This is much safer than trusting the file extension provided by the user.
-func GetMimeType(data []byte) string {
-	// http.DetectContentType reads up to 512 bytes to determine the content type.
-	return http.DetectContentType(data)
-}
-
 // IsSafeImage checks if the data represents a valid and safe image format (PNG, JPEG, GIF, WebP).
 func IsSafeImage(data []byte) bool {
-	rawMime := GetMimeType(data)
+	rawMime := http.DetectContentType(data)
 	mime, _, _ := strings.Cut(rawMime, ";")
 	switch strings.TrimSpace(mime) {
 	case "image/jpeg", "image/png", "image/gif", "image/webp", "image/jpg":
@@ -60,7 +53,7 @@ func IsSafeDocument(data []byte) bool {
 		return true
 	}
 
-	rawMime := GetMimeType(data)
+	rawMime := http.DetectContentType(data)
 	mime, _, _ := strings.Cut(rawMime, ";")
 	mime = strings.TrimSpace(mime)
 
@@ -100,7 +93,7 @@ func isZipBasedOfficeDocument(data []byte) bool {
 // IsSafeVideo checks if the data represents a valid video format (MP4, WebM, OGG, MOV).
 // Uses magic bytes detection via http.DetectContentType.
 func IsSafeVideo(data []byte) bool {
-	switch GetMimeType(data) {
+	switch http.DetectContentType(data) {
 	case "video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/mpeg":
 		return true
 	default:

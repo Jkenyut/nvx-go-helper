@@ -95,6 +95,19 @@ func TestEncodeDecodeDynamicCursor(t *testing.T) {
 		assert.Equal(t, "Item 2,20", res.NextCursor)
 		assert.True(t, res.HasNext)
 	})
+
+	t.Run("64-bit snowflake integer and leading-zero string", func(t *testing.T) {
+		const snowflakeID int64 = 9007199254740993 // 2^53 + 1
+		encoded, err := EncodeDynamicCursor("00123", snowflakeID)
+		require.NoError(t, err)
+		assert.Equal(t, "00123,9007199254740993", encoded)
+
+		decoded, err := DecodeDynamicCursor(encoded)
+		require.NoError(t, err)
+		require.Len(t, decoded, 2)
+		assert.Equal(t, "00123", decoded[0])
+		assert.Equal(t, snowflakeID, decoded[1])
+	})
 }
 
 func TestBuildDynamicKeyset(t *testing.T) {

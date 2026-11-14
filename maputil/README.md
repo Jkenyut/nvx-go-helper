@@ -45,10 +45,6 @@ import "github.com/Jkenyut/nvx-go-helper/maputil"
 
 m := map[string]int{"a": 1, "b": 2, "c": 3}
 
-// Extract keys and values
-keys := maputil.Keys(m)     // ["a", "b", "c"]
-values := maputil.Values(m) // [1, 2, 3]
-
 // Select matching keys
 subset := maputil.Pick(m, "a", "c") // map[string]int{"a": 1, "c": 3}
 

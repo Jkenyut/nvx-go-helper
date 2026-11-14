@@ -1,7 +1,6 @@
 package pagination
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -287,34 +286,7 @@ func (r CursorFilterRequest) BuildKeysetQuery(cfg KeysetConfig) (KeysetQuery, er
 	if r.CursorErr != nil {
 		return KeysetQuery{}, r.CursorErr
 	}
-
-	cols, ops, orders := prepareDynamicSort(r.SortBy, r.SortType, r.Direction, cfg)
-
-	var sqlWhere string
-	var sqlArgs []any
-	if len(r.CursorValues) > 0 {
-		vals := r.CursorValues
-		if cfg.AutoDetectTypes || cfg.Detector != nil {
-			d := DefaultDetector
-			if cfg.Detector != nil {
-				d = cfg.Detector
-			}
-			normVals, err := d.NormalizeCursorValues(cols, r.CursorValues)
-			if err != nil {
-				return KeysetQuery{}, fmt.Errorf("normalizing cursor values: %w", err)
-			}
-			vals = normVals
-		}
-		sqlWhere, sqlArgs = BuildDynamicKeyset(cols, ops, vals)
-	}
-
-	return KeysetQuery{
-		Where:     sqlWhere,
-		Args:      sqlArgs,
-		OrderStrs: orders,
-		Columns:   cols,
-		Operators: ops,
-	}, nil
+	return buildKeysetQuery(r.SortBy, r.SortType, r.Direction, r.CursorValues, cfg, true)
 }
 
 // BindCursorFilterRequest extracts dynamic cursor pagination parameters, column filters, search query,
@@ -433,14 +405,7 @@ func (r UnifiedFilterRequest) BuildKeysetQuery(cfg KeysetConfig) (KeysetQuery, e
 
 // NormalizedCursorValues normalizes the decoded cursor values against sort columns using DefaultDetector or a custom detector.
 func (r UnifiedFilterRequest) NormalizedCursorValues(sortCols []string, detector ...*TypeDetector) ([]any, error) {
-	if r.CursorErr != nil {
-		return nil, r.CursorErr
-	}
-	d := DefaultDetector
-	if len(detector) > 0 && detector[0] != nil {
-		d = detector[0]
-	}
-	return d.NormalizeCursorValues(sortCols, r.CursorValues)
+	return r.ToCursorFilterRequest().NormalizedCursorValues(sortCols, detector...)
 }
 
 // NewUnifiedResponse creates a UnifiedListResponse[T] using either offset or cursor metadata based on req.IsCursor.

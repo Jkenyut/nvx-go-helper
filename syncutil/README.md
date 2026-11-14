@@ -1,6 +1,7 @@
 # SyncUtil Helper (`/syncutil`)
 
-The syncutil package provides concurrency primitives for fine-grained locking and parallel slice processing with panic recovery.
+The syncutil package provides concurrency primitives for fine-grained per-key locking.
+For concurrent worker pools and parallel task pipelines, see `/worker`.
 
 ## 1. KeyedMutex Architecture
 
@@ -41,57 +42,9 @@ flowchart TD
 
 ---
 
-## 2. Bounded Parallel Slice Processing (`Map` & `ForEach`)
+## 2. Usage Examples
 
-The functions `ForEach` and `Map` process slices in parallel using a bounded worker pool.
-Both functions recover runtime panics and preserve item ordering.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Caller as Host Application
-    participant Runner as syncutil.Map
-    participant Workers as Bounded Goroutines (Concurrency = N)
-    participant WorkerFn as User Mapping Function
-
-    Caller->>Runner: Map(ctx, items, concurrency, workerFn)
-    Runner->>Runner: Start results slice with matching capacity
-    Runner->>Runner: Start semaphore channel of size N
-
-    loop Over Input Items
-        Runner->>Workers: Acquire semaphore slot (send token)
-        Runner->>Workers: Spawn goroutine for item at index i
-        activate Workers
-        alt Worker Panics
-            Workers->>Workers: Recover panic in deferred function
-            Workers->>Runner: Convert panic to error and cancel context
-        else Normal Execution
-            Workers->>WorkerFn: Execute workerFn(ctx, items[i])
-            WorkerFn-->>Workers: Return mapped result and error
-            Workers->>Runner: Store result at results[i]
-        end
-        Workers->>Runner: Release semaphore slot (read token)
-        deactivate Workers
-    end
-
-    Runner->>Runner: Wait for all goroutines to finish
-    Runner-->>Caller: Return ordered results slice and first error
-```
-
-### Procedural Steps (ASD-STE100)
-1. Pass the context, items slice, concurrency limit, and mapping function to `syncutil.Map`.
-2. The function allocates the results slice with the exact input length.
-3. The function uses a channel semaphore to limit active goroutines.
-4. A deferred recover function catches panics in each worker goroutine.
-5. If a worker panics or errors, the function records the error and cancels the context.
-6. The function stores each output at its original index to preserve ordering.
-7. The function returns the ordered results slice to the caller.
-
----
-
-## 3. Usage Examples
-
-### 3.1 Per-Entity Locking (`KeyedMutex`)
+### 2.1 Per-Entity Locking (`KeyedMutex`)
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/syncutil"
@@ -107,33 +60,4 @@ func UpdateUserBalance(userID string, amount float64) error {
 	// Execute critical balance update
 	return nil
 }
-```
-
-### 3.2 Bounded Parallel Slice Processing (`ForEach`)
-
-```go
-items := []string{"task1", "task2", "task3", "task4"}
-
-// Process tasks with a maximum of two concurrent workers
-err := syncutil.ForEach(ctx, items, 2, func(ctx context.Context, item string) error {
-	return processRemoteWebhook(ctx, item)
-})
-if err != nil {
-	return err
-}
-```
-
-### 3.3 Parallel Mapping with Order Preservation (`Map`)
-
-```go
-userIDs := []int{101, 102, 103, 104}
-
-// Map user IDs in parallel with up to four goroutines
-profiles, err := syncutil.Map(ctx, userIDs, 4, func(ctx context.Context, id int) (UserProfile, error) {
-	return fetchProfileFromDatabase(ctx, id)
-})
-if err != nil {
-	return err
-}
-// profiles[0] matches userIDs[0]
 ```

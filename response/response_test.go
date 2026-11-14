@@ -51,7 +51,6 @@ func TestSuccessResponses(t *testing.T) {
 		{"NoContent", func(c context.Context) Response { return NoContent(c) }, 204, "no content", false},
 		{"ResetContent", func(c context.Context) Response { return ResetContent(c) }, 205, "reset content", false},
 		{"PartialContent", func(c context.Context) Response { return PartialContent(c, "partial", "data") }, 206, "partial", true},
-		{"Success format", func(c context.Context) Response { return Success(c, "payload") }, 200, "success", true},
 	}
 
 	for _, tt := range tests {
@@ -214,12 +213,12 @@ func TestResponse_JSONEncoder(t *testing.T) {
 	})
 }
 
-func TestResponse_WriteHTTP(t *testing.T) {
+func TestResponse_WriteJSONResponse(t *testing.T) {
 	ctx := activity.WithRequestID(context.Background(), "test-write-http-123")
 	rec := httptest.NewRecorder()
 
 	resp := Created(ctx, "user created", map[string]string{"name": "Budi"})
-	resp.WriteHTTP(rec)
+	WriteJSONResponse(rec, resp)
 
 	assert.Equal(t, 201, rec.Code)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
@@ -233,11 +232,8 @@ func TestResponse_WriteHTTP(t *testing.T) {
 	assert.Equal(t, "user created", result.Meta.Message)
 }
 
-func TestSetHeaderAndSetHeaders(t *testing.T) {
+func TestSetHeaders(t *testing.T) {
 	rec := httptest.NewRecorder()
-	SetHeader(rec, "X-Single", "val1")
-	assert.Equal(t, "val1", rec.Header().Get("X-Single"))
-
 	SetHeaders(rec, map[string]string{
 		"X-Multi-1": "val2",
 		"X-Multi-2": "val3",

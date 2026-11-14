@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -90,6 +91,7 @@ var defaultTimeFormats = []string{
 // TypeDetector determines column data types based on naming conventions and explicit overrides
 // without imposing hardcoded opinions.
 type TypeDetector struct {
+	mu                sync.RWMutex
 	booleanSuffixes   []string
 	integerSuffixes   []string
 	floatSuffixes     []string
@@ -118,6 +120,9 @@ var DefaultDetector = NewTypeDetector()
 
 // Clone creates an independent copy of TypeDetector.
 func (d *TypeDetector) Clone() *TypeDetector {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	cp := &TypeDetector{
 		booleanSuffixes:   append([]string(nil), d.booleanSuffixes...),
 		integerSuffixes:   append([]string(nil), d.integerSuffixes...),
@@ -140,79 +145,98 @@ func (d *TypeDetector) Clone() *TypeDetector {
 
 // WithBooleanSuffixes adds custom boolean column suffixes.
 func (d *TypeDetector) WithBooleanSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.booleanSuffixes = append(d.booleanSuffixes, suffixes...)
 	return d
 }
 
 // WithIntegerSuffixes adds custom integer column suffixes.
 func (d *TypeDetector) WithIntegerSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.integerSuffixes = append(d.integerSuffixes, suffixes...)
 	return d
 }
 
 // WithFloatSuffixes adds custom float column suffixes.
 func (d *TypeDetector) WithFloatSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.floatSuffixes = append(d.floatSuffixes, suffixes...)
 	return d
 }
 
 // WithUUIDSuffixes adds custom UUID column suffixes.
 func (d *TypeDetector) WithUUIDSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.uuidSuffixes = append(d.uuidSuffixes, suffixes...)
 	return d
 }
 
 // WithDateSuffixes adds custom date column suffixes.
 func (d *TypeDetector) WithDateSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.dateSuffixes = append(d.dateSuffixes, suffixes...)
 	return d
 }
 
 // WithTimeSuffixes adds custom time-of-day column suffixes.
 func (d *TypeDetector) WithTimeSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.timeSuffixes = append(d.timeSuffixes, suffixes...)
 	return d
 }
 
 // WithTimestampSuffixes adds custom timestamp column suffixes.
 func (d *TypeDetector) WithTimestampSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.timestampSuffixes = append(d.timestampSuffixes, suffixes...)
 	return d
 }
 
 // WithJSONSuffixes adds custom JSON column suffixes.
 func (d *TypeDetector) WithJSONSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.jsonSuffixes = append(d.jsonSuffixes, suffixes...)
 	return d
 }
 
 // WithBytesSuffixes adds custom bytes/binary column suffixes.
 func (d *TypeDetector) WithBytesSuffixes(suffixes ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.bytesSuffixes = append(d.bytesSuffixes, suffixes...)
 	return d
 }
 
 // WithTimestampFormats adds custom timestamp parsing layouts.
 func (d *TypeDetector) WithTimestampFormats(formats ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.timestampFormats = append(d.timestampFormats, formats...)
 	return d
 }
 
 // WithTimeFormats adds custom time parsing layouts.
 func (d *TypeDetector) WithTimeFormats(formats ...string) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.timeFormats = append(d.timeFormats, formats...)
 	return d
 }
 
 // WithOverride explicitly sets the column type for a specific column name.
 func (d *TypeDetector) WithOverride(column string, colType ColumnType) *TypeDetector {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.overrides[strings.ToLower(strings.TrimSpace(column))] = colType
 	return d
-}
-
-// WithColumnOverride is an alias for WithOverride.
-func (d *TypeDetector) WithColumnOverride(column string, colType ColumnType) *TypeDetector {
-	return d.WithOverride(column, colType)
 }
 
 // WithSuffixes registers suffixes for a specific column type.
@@ -253,6 +277,9 @@ func hasMatch(col string, names []string) bool {
 
 // DetectColumnType infers the column data type from column names (supporting table prefixes like ga_id, u.id, users.is_active).
 func (d *TypeDetector) DetectColumnType(col string) ColumnType {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	col = strings.ToLower(strings.TrimSpace(col))
 	if t, exists := d.overrides[col]; exists {
 		return t
@@ -296,6 +323,9 @@ func DetectColumnType(col string) ColumnType {
 }
 
 func (d *TypeDetector) parseTimestamp(s string) (time.Time, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	s = strings.TrimSpace(s)
 	for _, layout := range d.timestampFormats {
 		if t, err := time.Parse(layout, s); err == nil {
@@ -306,6 +336,9 @@ func (d *TypeDetector) parseTimestamp(s string) (time.Time, error) {
 }
 
 func (d *TypeDetector) parseDate(s string) (time.Time, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	s = strings.TrimSpace(s)
 	if t, err := time.Parse("2006-01-02", s); err == nil {
 		return t.UTC(), nil
@@ -319,6 +352,9 @@ func (d *TypeDetector) parseDate(s string) (time.Time, error) {
 }
 
 func (d *TypeDetector) parseTime(s string) (string, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	s = strings.TrimSpace(s)
 	for _, layout := range d.timeFormats {
 		if _, err := time.Parse(layout, s); err == nil {
@@ -765,6 +801,10 @@ func (d *TypeDetector) normalizeCursorValue(col string, colType ColumnType, val 
 		switch v := val.(type) {
 		case string:
 			return v, nil
+		case float64:
+			return strconv.FormatFloat(v, 'f', -1, 64), nil
+		case float32:
+			return strconv.FormatFloat(float64(v), 'f', -1, 32), nil
 		default:
 			return fmt.Sprintf("%v", v), nil
 		}

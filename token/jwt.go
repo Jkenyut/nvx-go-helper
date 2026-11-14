@@ -3,6 +3,7 @@ package token
 
 import (
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -32,6 +33,8 @@ var (
 	ErrAudienceMismatch = errors.New("token audience mismatch")
 	// ErrMissingExpiresAt is returned when the token lacks an expiration claim and expiration is required.
 	ErrMissingExpiresAt = errors.New("token expiration claim is required")
+	// ErrUnsupportedCurve is returned when an ECDSA key does not use the NIST P-256 curve required for ES256.
+	ErrUnsupportedCurve = errors.New("unsupported elliptic curve: ES256 requires P-256")
 )
 
 type verifyOptions struct {
@@ -100,6 +103,9 @@ func GenerateES256JWT[T any](privKey *ecdsa.PrivateKey, claims JWTClaims[T]) (st
 	if privKey == nil {
 		return "", ErrNilKey
 	}
+	if privKey.Curve != elliptic.P256() {
+		return "", ErrUnsupportedCurve
+	}
 
 	header := jwtHeader{
 		Alg: "ES256",
@@ -143,6 +149,9 @@ func GenerateES256JWT[T any](privKey *ecdsa.PrivateKey, claims JWTClaims[T]) (st
 func VerifyES256JWT[T any](pubKey *ecdsa.PublicKey, tokenString string, opts ...VerifyOption) (*JWTClaims[T], error) {
 	if pubKey == nil {
 		return nil, ErrNilKey
+	}
+	if pubKey.Curve != elliptic.P256() {
+		return nil, ErrUnsupportedCurve
 	}
 
 	var opt verifyOptions

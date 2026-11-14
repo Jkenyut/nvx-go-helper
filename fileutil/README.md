@@ -16,7 +16,7 @@ flowchart TD
     RegexClean --> TrimDots["Strip leading dots"]
     TrimDots --> SafeName(["Return Safe Filename"])
 
-    ActionChoice -- Check Safe Image --> MagicImg["GetMimeType from first 512 bytes"]
+    ActionChoice -- Check Safe Image --> MagicImg["Detect MIME type via http.DetectContentType"]
     MagicImg --> ImageMatch{"Match PNG, JPEG, GIF, WebP?"}
     ImageMatch -- Yes --> SafeImgTrue(["Return true"])
     ImageMatch -- No --> SafeImgFalse(["Return false"])
@@ -52,13 +52,10 @@ import "github.com/Jkenyut/nvx-go-helper/fileutil"
 // 1. Sanitize file name against path traversal
 cleanName := fileutil.SanitizeFileName("../../etc/passwd.png") // "passwd.png"
 
-// 2. Identify MIME type from magic bytes
-mimeType := fileutil.GetMimeType(fileBytes) // "image/png"
-
-// 3. Inspect document and image safety
+// 2. Inspect document and image safety
 isDoc := fileutil.IsSafeDocument(fileBytes)
 isImg := fileutil.IsSafeImage(fileBytes)
 
-// 4. Format byte sizes for display
+// 3. Format byte sizes for display
 displaySize := fileutil.FormatFileSize(2097152) // "2.0 MB"
 ```

@@ -5,11 +5,6 @@ import (
 	"net/http"
 )
 
-// SetHeader sets a single HTTP header on the provided ResponseWriter.
-func SetHeader(w http.ResponseWriter, key, value string) {
-	w.Header().Set(key, value)
-}
-
 // SetHeaders sets multiple HTTP headers on the provided ResponseWriter.
 // The headers map keys are header names and values are header values.
 func SetHeaders(w http.ResponseWriter, headers map[string]string) {

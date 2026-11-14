@@ -59,7 +59,6 @@ flowchart TD
             FMT["format"]
             MAPU["maputil"]
             SLC["sliceutil"]
-            PTR["pointer"]
         end
     end
 
@@ -246,7 +245,7 @@ sequenceDiagram
 
     Handler->>Handler: Execute business logic
 
-    Handler->>Resp: OK(ctx, "data retrieved", payload).WriteHTTP(rw)
+    Handler->>Resp: WriteJSONResponse(rw, OK(ctx, "data retrieved", payload))
     Resp->>Resp: Extract request_id from context or make UUID v7
     Resp->>Resp: Serialize complete response to memory buffer via Sonic
     alt Serialization Fails
@@ -550,14 +549,13 @@ golangci-lint run ./...
 | **`fileutil`** | [`/fileutil`](fileutil/README.md) | Checks file MIME magic bytes and cleans filenames against path traversal. |
 | **`format`** | [`/format`](format/README.md) | Formats Indonesian Rupiah, masks sensitive words, and truncates UTF-8 strings. |
 | **`logger`** | [`/logger`](logger/README.md) | Provides structured Zerolog logging with diode ring buffers and slog bridges. |
-| **`maputil`** | [`/maputil`](maputil/README.md) | Manipulates generic maps: Keys, Values, Merge, Pick, Omit, and Filter. |
+| **`maputil`** | [`/maputil`](maputil/README.md) | Manipulates generic maps: Merge, Pick, Omit, Invert, and Filter. |
 | **`pagination`** | [`/pagination`](pagination/README.md) | Builds keyset cursor and offset SQL queries without forced limits. |
-| **`pointer`** | [`/pointer`](pointer/README.md) | Converts primitive literal values into pointers. |
 | **`request`** | [`/request`](request/README.md) | Decodes JSON with size limits, parses query values, and resolves client IPs. |
 | **`response`** | [`/response`](response/README.md) | Writes standardized JSON HTTP responses with pre-buffered encoding. |
 | **`retry`** | [`/retry`](retry/README.md) | Executes operations with exponential backoff and leak-free timers. |
-| **`sliceutil`** | [`/sliceutil`](sliceutil/README.md) | Manipulates generic slices: Chunk, Map, Filter, Unique, and Contains. |
-| **`syncutil`** | [`/syncutil`](syncutil/README.md) | Provides keyed mutexes and parallel slice runners with panic recovery. |
+| **`sliceutil`** | [`/sliceutil`](sliceutil/README.md) | Manipulates generic slices: Map, Filter, Unique, Find, Reduce, and FlatMap. |
+| **`syncutil`** | [`/syncutil`](syncutil/README.md) | Provides per-key mutex locks with reference-counted cleanup. |
 | **`token`** | [`/token`](token/README.md) | Creates and verifies ES256 JWT tokens with algorithm validation. |
 | **`validator`** | [`/validator`](validator/README.md) | Validates structs with custom tags for Indonesian ID numbers. |
 | **`worker`** | [`/worker`](worker/README.md) | Manages concurrent worker pools with context cancellation and progress tracking. |
@@ -717,8 +715,6 @@ m1 := map[string]int{"a": 1, "b": 2}
 m2 := map[string]int{"b": 3, "c": 4}
 
 merged := maputil.Merge(m1, m2) // map[a:1 b:3 c:4]
-keys := maputil.Keys(m1)         // []string{"a", "b"}
-values := maputil.Values(m1)     // []int{1, 2}
 picked := maputil.Pick(m1, "a")  // map[a:1]
 ```
 
@@ -745,19 +741,7 @@ resp := pagination.NewFinalizedCursorResponse(users, req.DynamicCursorRequest, e
 
 ---
 
-### 7.10 Pointer (`/pointer`)
-Converts literal values into pointers.
-
-```go
-import "github.com/Jkenyut/nvx-go-helper/pointer"
-
-enabled := pointer.Of(true)
-maxRetries := pointer.Of(3)
-```
-
----
-
-### 7.11 Request (`/request`)
+### 7.10 Request (`/request`)
 Binds HTTP request bodies, limits payload sizes to 10 MiB, and resolves client IP addresses with trusted proxy validation.
 
 ```go
@@ -775,7 +759,7 @@ if err := request.BindAndValidate(r, &payload); err != nil {
 
 ---
 
-### 7.12 Response (`/response`)
+### 7.11 Response (`/response`)
 Writes standard JSON API responses with pre-buffered serialization before header output.
 
 ```go
@@ -785,17 +769,17 @@ func Handler(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
     
     // Write 200 OK response with metadata and payload
-    response.OK(ctx, "account retrieved", account).WriteHTTP(w)
+    response.WriteJSONResponse(w, response.OK(ctx, "account retrieved", account))
     
     // Write error responses
-    // response.BadRequest(ctx, "invalid input").WriteHTTP(w)
-    // response.NotFound(ctx, "account not found").WriteHTTP(w)
+    // response.WriteJSONResponse(w, response.BadRequest(ctx, "invalid input"))
+    // response.WriteJSONResponse(w, response.NotFound(ctx, "account not found"))
 }
 ```
 
 ---
 
-### 7.13 Retry (`/retry`)
+### 7.12 Retry (`/retry`)
 Executes operations with exponential backoff and timer cleanup.
 
 ```go
@@ -815,7 +799,7 @@ err := retry.Do(func() error {
 
 ---
 
-### 7.14 Sliceutil (`/sliceutil`)
+### 7.13 Sliceutil (`/sliceutil`)
 Generic slice transformation functions.
 
 ```go
@@ -823,33 +807,28 @@ import "github.com/Jkenyut/nvx-go-helper/sliceutil"
 
 items := []int{1, 2, 3, 4, 5, 6}
 
-chunks := sliceutil.Chunk(items, 2) // [[1, 2], [3, 4], [5, 6]]
+doubled := sliceutil.Map(items, func(v int) int { return v * 2 })
 evens := sliceutil.Filter(items, func(v int) bool { return v%2 == 0 })
 unique := sliceutil.Unique([]string{"a", "b", "a"}) // ["a", "b"]
 ```
 
 ---
 
-### 7.15 Syncutil (`/syncutil`)
-Provides per-key mutex locks and bounded parallel slice execution with panic recovery.
+### 7.14 Syncutil (`/syncutil`)
+Provides per-key mutex locks with reference-counted cleanup.
 
 ```go
 import "github.com/Jkenyut/nvx-go-helper/syncutil"
 
-// 1. KeyedMutex for per-entity locking
+// KeyedMutex for per-entity locking
 var userLocks = syncutil.NewKeyedMutex[string]()
 unlock := userLocks.Lock("user-101")
 defer unlock()
-
-// 2. Parallel slice mapping with panic recovery and order preservation
-results, err := syncutil.Map(ctx, userIDs, 4, func(ctx context.Context, id int) (UserProfile, error) {
-    return fetchUserProfile(ctx, id)
-})
 ```
 
 ---
 
-### 7.16 Token (`/token`)
+### 7.15 Token (`/token`)
 Generates and checks ES256 JWT tokens with algorithm validation and expiration requirements.
 
 ```go
@@ -869,7 +848,7 @@ parsed, err := token.VerifyES256JWT[UserPayload](
 
 ---
 
-### 7.17 Validator (`/validator`)
+### 7.16 Validator (`/validator`)
 Struct validation wrapper for `validator/v10` with custom Indonesian tags.
 
 ```go
@@ -889,7 +868,7 @@ if err := validator.Struct(profile); err != nil {
 
 ---
 
-### 7.18 Worker (`/worker`)
+### 7.17 Worker (`/worker`)
 Concurrent worker pool with context cancellation, progress callbacks, and panic recovery.
 
 ```go

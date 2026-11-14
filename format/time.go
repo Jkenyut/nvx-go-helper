@@ -18,15 +18,9 @@ import (
 // =============================================================================
 
 var (
-	// UTC is the standard time location for storage and internal logic.
-	UTC = time.UTC
-
 	// WIB (Waktu Indonesia Barat) is UTC+7. Used for display to users in Western Indonesia.
 	// It is a fixed zone with no daylight saving time.
 	WIB = time.FixedZone("Asia/Jakarta", 7*60*60)
-
-	// Jakarta is an alias for WIB.
-	Jakarta = WIB
 
 	// Bangkok is UTC+7, same offset as WIB but distinct location.
 	Bangkok = time.FixedZone("Asia/Bangkok", 7*60*60)
@@ -37,9 +31,6 @@ var (
 // =============================================================================
 
 const (
-	// LayoutISO is the standard RFC3339 format (e.g., "2006-01-02T15:04:05Z").
-	LayoutISO = time.RFC3339
-
 	// LayoutRFC3339WIB is RFC3339 with a fixed +07:00 offset.
 	LayoutRFC3339WIB = "2006-01-02T15:04:05+07:00"
 
@@ -62,18 +53,12 @@ func NowUTC() time.Time { return time.Now().UTC() }
 // Use this for display purposes or business logic specific to Indonesia time.
 func NowWIB() time.Time { return time.Now().In(WIB) }
 
-// Now returns the current time in UTC (default safe choice).
-func Now() time.Time { return NowUTC() }
-
 // =============================================================================
 // CONVERSIONS
 // =============================================================================
 
 // ToWIB converts a time to WIB (UTC+7).
 func ToWIB(t time.Time) time.Time { return t.In(WIB) }
-
-// ToUTC converts a time to UTC.
-func ToUTC(t time.Time) time.Time { return t.UTC() }
 
 // =============================================================================
 // FORMATTERS
@@ -130,7 +115,7 @@ func StringToDateTimeSecUTC(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, fmt.Errorf("empty datetime")
 	}
-	return time.ParseInLocation(LayoutDateTimeSec, s, UTC)
+	return time.ParseInLocation(LayoutDateTimeSec, s, time.UTC)
 }
 
 // StringToDateWIB parses "YYYY-MM-DD" as WIB.
@@ -148,7 +133,7 @@ func StringToDateUTC(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, fmt.Errorf("empty date")
 	}
-	return time.ParseInLocation(LayoutDate, s, UTC)
+	return time.ParseInLocation(LayoutDate, s, time.UTC)
 }
 
 // =============================================================================

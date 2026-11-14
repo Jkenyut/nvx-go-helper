@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -272,36 +271,65 @@ func TestSlogWithGroup(t *testing.T) {
 	}
 }
 
-func TestConsoleWriter_JSONFormatting(t *testing.T) {
-	var buf bytes.Buffer
-	cw := zerolog.ConsoleWriter{
-		Out:     &buf,
-		NoColor: true,
-		FormatFieldValue: func(i any) string {
-			switch v := i.(type) {
-			case []byte:
-				return string(v)
-			case json.RawMessage:
-				return string(v)
-			case map[string]any, []any, map[string]string:
-				if b, err := sonic.Marshal(v); err == nil {
-					return string(b)
-				}
+func TestInit_JSONFormattingAllEnvironments(t *testing.T) {
+	envs := []string{"development", "staging", "production"}
+
+	for _, env := range envs {
+		t.Run(env, func(t *testing.T) {
+			var buf bytes.Buffer
+			Init(
+				WithEnv(env),
+				WithServiceName("json-svc"),
+				WithWriter(&buf),
+			)
+			defer func() { _ = Close() }()
+
+			raw := json.RawMessage(`{"nested":"ok"}`)
+			L().Info().
+				Interface("data", map[string]any{"key": "value", "count": 10}).
+				RawJSON("raw", raw).
+				Msg("testing json output")
+
+			if err := Close(); err != nil {
+				t.Fatalf("Close() failed: %v", err)
 			}
-			return fmt.Sprintf("%v", i)
-		},
-	}
 
-	log := zerolog.New(cw)
-	log.Info().Interface("data", map[string]any{"key": "value", "count": 10}).Msg("testing console writer")
+			out := strings.TrimSpace(buf.String())
+			if out == "" {
+				t.Fatal("expected non-empty log output")
+			}
+			if !sonic.Valid([]byte(out)) {
+				t.Fatalf("expected valid JSON output, got: %s", out)
+			}
+			if strings.Contains(out, "\x1b[") {
+				t.Errorf("expected no ANSI color escape codes, got: %s", out)
+			}
+			if strings.Contains(out, "map[") {
+				t.Errorf("expected JSON formatted field, not Go map syntax: %s", out)
+			}
 
-	out := buf.String()
-	// Should NOT contain map[key:value count:10]
-	if strings.Contains(out, "map[") {
-		t.Errorf("expected json formatted field, but got Go map syntax: %s", out)
-	}
-	if !strings.Contains(out, `"key":"value"`) {
-		t.Errorf("expected json output in console writer, got: %s", out)
+			var parsed map[string]any
+			if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+				t.Fatalf("failed to unmarshal JSON log output: %v; out: %s", err, out)
+			}
+			if parsed["env"] != env {
+				t.Errorf("expected env %q, got %v", env, parsed["env"])
+			}
+			if parsed["service"] != "json-svc" {
+				t.Errorf("expected service %q, got %v", "json-svc", parsed["service"])
+			}
+			data, ok := parsed["data"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected data to be JSON object, got %T", parsed["data"])
+			}
+			if data["key"] != "value" {
+				t.Errorf("expected data.key = %q, got %v", "value", data["key"])
+			}
+			rawObj, ok := parsed["raw"].(map[string]any)
+			if !ok || rawObj["nested"] != "ok" {
+				t.Errorf("expected raw JSON object {\"nested\":\"ok\"}, got %v", parsed["raw"])
+			}
+		})
 	}
 }
 

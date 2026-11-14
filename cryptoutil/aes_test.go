@@ -50,7 +50,7 @@ func TestAESGCM(t *testing.T) {
 
 func TestGenerateAESKeyAndNewFromHex(t *testing.T) {
 	// 1. Generate key
-	hexKey, err := GenerateAESKey()
+	hexKey, err := GenerateKeyHex(32)
 	assert.NoError(t, err)
 
 	// Hex string of 32 bytes should be 64 characters long

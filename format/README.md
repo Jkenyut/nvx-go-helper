@@ -76,7 +76,7 @@ short := format.Truncate("Belajar Pemrograman Go", 10, "...") // "Belajar..."
 // Convert any value to string safely without panics
 strInt := format.ToString(100)           // "100"
 strBool := format.ToString(true)         // "true"
-strTime := format.ToString(format.Now()) // "2026-10-25T00:00:00Z"
+strTime := format.ToString(format.NowUTC()) // e.g. "2026-10-25T00:00:00Z"
 ```
 
 ### 2.4 Calendar Date Boundaries

@@ -17,9 +17,6 @@ flowchart TD
     OpChoice -- Filter --> FilterOp["Evaluate func(T) bool Predicate"]
     FilterOp --> OutFiltered(["Filtered Slice []T"])
 
-    OpChoice -- Chunk --> ChunkOp["Partition Slice into Size N Sub-slices"]
-    ChunkOp --> OutChunks(["Slice of Slices [][]T"])
-
     OpChoice -- Reduce --> ReduceOp["Accumulate Elements with func(U, T) U"]
     ReduceOp --> OutAcc(["Accumulated Value U"])
 
@@ -120,19 +117,13 @@ evens := sliceutil.Filter(numbers, func(n int) bool {
 compacted := sliceutil.Compact(numbers) // [1, 2, 3, 4]
 ```
 
-### 3.3 Chunking, Flattening, and Reversal
+### 3.3 Flattening
 
 ```go
-items := []string{"a", "b", "c", "d", "e"}
-
-// Split slice into chunks of size 2
-chunks := sliceutil.Chunk(items, 2) // [["a", "b"], ["c", "d"], ["e"]]
+nested := [][]string{{"a", "b"}, {"c", "d"}, {"e"}}
 
 // Flatten slice of slices
-flattened := sliceutil.Flatten(chunks) // ["a", "b", "c", "d", "e"]
-
-// Reverse element order without mutating input
-reversed := sliceutil.Reverse(items) // ["e", "d", "c", "b", "a"]
+flattened := sliceutil.Flatten(nested) // ["a", "b", "c", "d", "e"]
 ```
 
 ### 3.4 Set Operations
@@ -156,12 +147,6 @@ unique := sliceutil.Unique(dupes) // [1, 2, 3, 4]
 
 ```go
 items := []string{"red", "green", "blue"}
-
-// Check if element exists
-hasBlue := sliceutil.Contains(items, "blue") // true
-
-// Find index of element
-index := sliceutil.IndexOf(items, "green") // 1
 
 // Find first element matching predicate
 item, found := sliceutil.Find(items, func(s string) bool {

@@ -34,13 +34,15 @@ func BindJSON(r *http.Request, dest any) error {
 		_ = r.Body.Close()
 	}()
 
-	lr := io.LimitReader(r.Body, DefaultMaxBodyBytes+1)
-	decoder := sonic.ConfigDefault.NewDecoder(lr)
-	if err := decoder.Decode(dest); err != nil {
+	body, err := io.ReadAll(io.LimitReader(r.Body, DefaultMaxBodyBytes+1))
+	if err != nil {
 		return err
 	}
+	if int64(len(body)) > DefaultMaxBodyBytes {
+		return errors.New("request body exceeds maximum allowed size")
+	}
 
-	return nil
+	return sonic.Unmarshal(body, dest)
 }
 
 // BindAndValidate reads the HTTP request body, decodes it, and validates the struct
@@ -114,11 +116,6 @@ func getPathValue(r *http.Request, key string) string {
 	}
 	cleanKey := strings.Trim(strings.TrimSpace(key), "{}")
 	return r.PathValue(cleanKey)
-}
-
-// GetPathValue retrieves a path parameter string directly from the request URL path pattern.
-func GetPathValue(r *http.Request, key string) string {
-	return getPathValue(r, key)
 }
 
 // GetPathString retrieves a path parameter as a string, returning defaultValue if it is empty.
@@ -242,6 +239,9 @@ func GetQueryIntSlice(r *http.Request, key string) []int {
 // It automatically handles multiple keys and cleans up whitespace.
 func GetQueryMapSlice(r *http.Request, key string, delimiter string) map[string][]string {
 	result := make(map[string][]string)
+	if r == nil || r.URL == nil {
+		return result
+	}
 
 	// A query parameter can be provided multiple times (e.g. ?group=A&group=B)
 	values := r.URL.Query()[key]
@@ -340,13 +340,22 @@ func GetClientIP(r *http.Request, trustedProxies ...string) string {
 	}
 
 	// Check if proxy trust is satisfied:
-	// If trustedProxies are specified, verify remoteIP is in the list.
+	// If trustedProxies are specified, verify remoteIP matches an IP or CIDR in the list.
 	// If no trustedProxies are specified, maintain backward compatibility.
 	isTrusted := len(trustedProxies) == 0
-	for _, proxy := range trustedProxies {
-		if remoteIP == proxy {
-			isTrusted = true
-			break
+	if !isTrusted {
+		parsedRemote := net.ParseIP(remoteIP)
+		for _, proxy := range trustedProxies {
+			if remoteIP == proxy {
+				isTrusted = true
+				break
+			}
+			if parsedRemote != nil && strings.Contains(proxy, "/") {
+				if _, ipNet, err := net.ParseCIDR(proxy); err == nil && ipNet.Contains(parsedRemote) {
+					isTrusted = true
+					break
+				}
+			}
 		}
 	}
 
@@ -376,6 +385,9 @@ func GetClientIP(r *http.Request, trustedProxies ...string) string {
 
 // GetBearerToken extracts the Bearer token from the Authorization header.
 func GetBearerToken(r *http.Request) string {
+	if r == nil || r.Header == nil {
+		return ""
+	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		return ""
@@ -397,9 +409,4 @@ func GetHeader(r *http.Request, name string) (string, bool) {
 		return values[0], true
 	}
 	return "", false
-}
-
-// GetBasicAuthUsernamePassword extracts username and password from Basic Authentication header
-func GetBasicAuthUsernamePassword(r *http.Request) (string, string, bool) {
-	return r.BasicAuth()
 }

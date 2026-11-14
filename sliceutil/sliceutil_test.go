@@ -3,46 +3,12 @@ package sliceutil_test
 import (
 	"fmt"
 	"reflect"
-	"sort"
 	"strconv"
 	"testing"
 
 	"github.com/Jkenyut/nvx-go-helper/sliceutil"
 	"github.com/stretchr/testify/assert"
 )
-
-func TestChunk(t *testing.T) {
-	tests := []struct {
-		name      string
-		slice     []int
-		size      int
-		want      [][]int
-		wantPanic bool
-	}{
-		{"Evenly divisible", []int{1, 2, 3, 4}, 2, [][]int{{1, 2}, {3, 4}}, false},
-		{"Not evenly divisible", []int{1, 2, 3, 4, 5}, 2, [][]int{{1, 2}, {3, 4}, {5}}, false},
-		{"Size larger than slice", []int{1, 2, 3}, 5, [][]int{{1, 2, 3}}, false},
-		{"Empty slice", []int{}, 2, [][]int{}, false},
-		{"Nil slice", nil, 2, [][]int{}, false},
-		{"Zero size panic", []int{1, 2}, 0, nil, true},
-		{"Negative size panic", []int{1, 2}, -1, nil, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Errorf("Chunk() did not panic for invalid size %d", tt.size)
-					}
-				}()
-				sliceutil.Chunk(tt.slice, tt.size)
-				return
-			}
-			assert.Equal(t, tt.want, sliceutil.Chunk(tt.slice, tt.size))
-		})
-	}
-}
 
 func TestMap(t *testing.T) {
 	t.Run("Int to String", func(t *testing.T) {
@@ -98,13 +64,6 @@ func TestUnique(t *testing.T) {
 	t.Run("All same", func(t *testing.T) {
 		assert.Equal(t, []int{1}, sliceutil.Unique([]int{1, 1, 1}))
 	})
-}
-
-func TestContains(t *testing.T) {
-	assert.True(t, sliceutil.Contains([]int{1, 2, 3}, 2))
-	assert.False(t, sliceutil.Contains([]int{1, 2, 3}, 4))
-	assert.False(t, sliceutil.Contains([]int{}, 1))
-	assert.False(t, sliceutil.Contains[int](nil, 1))
 }
 
 func TestFind(t *testing.T) {
@@ -197,22 +156,6 @@ func TestDifference(t *testing.T) {
 	})
 }
 
-func TestReverse(t *testing.T) {
-	t.Run("Normal", func(t *testing.T) {
-		s := []int{1, 2, 3, 4, 5}
-		result := sliceutil.Reverse(s)
-		assert.Equal(t, []int{5, 4, 3, 2, 1}, result)
-	})
-	t.Run("Single element", func(t *testing.T) {
-		s := []int{1}
-		assert.Equal(t, []int{1}, sliceutil.Reverse(s))
-	})
-	t.Run("Empty", func(t *testing.T) {
-		s := []int{}
-		assert.Equal(t, []int{}, sliceutil.Reverse(s))
-	})
-}
-
 func TestFlatten(t *testing.T) {
 	t.Run("Normal", func(t *testing.T) {
 		result := sliceutil.Flatten([][]int{{1, 2}, {3}, {4, 5}})
@@ -220,45 +163,6 @@ func TestFlatten(t *testing.T) {
 	})
 	t.Run("Empty", func(t *testing.T) {
 		assert.Equal(t, []int{}, sliceutil.Flatten([][]int{}))
-	})
-}
-
-func TestMapKeys(t *testing.T) {
-	m := map[string]int{"a": 1, "b": 2, "c": 3}
-	keys := sliceutil.MapKeys(m)
-	sort.Strings(keys)
-	assert.Equal(t, []string{"a", "b", "c"}, keys)
-}
-
-func TestMapValues(t *testing.T) {
-	m := map[string]int{"a": 1, "b": 2}
-	values := sliceutil.MapValues(m)
-	sort.Ints(values)
-	assert.Equal(t, []int{1, 2}, values)
-}
-
-func TestMapMerge(t *testing.T) {
-	m1 := map[string]int{"a": 1}
-	m2 := map[string]int{"b": 2, "a": 3}
-	result := sliceutil.MapMerge(m1, m2)
-	assert.Equal(t, 3, result["a"])
-	assert.Equal(t, 2, result["b"])
-}
-
-func TestMergeSlices(t *testing.T) {
-	t.Run("Normal", func(t *testing.T) {
-		got := sliceutil.MergeSlices([]int{1, 2}, []int{3, 4}, []int{5})
-		assert.Equal(t, []int{1, 2, 3, 4, 5}, got)
-	})
-	t.Run("Empty", func(t *testing.T) {
-		got := sliceutil.MergeSlices[int]()
-		assert.Equal(t, []int{}, got)
-	})
-	t.Run("Nil slices", func(t *testing.T) {
-		var s1 []int
-		s2 := []int{}
-		got := sliceutil.MergeSlices(s1, s2)
-		assert.Equal(t, []int{}, got)
 	})
 }
 
@@ -296,13 +200,6 @@ func TestFlatMap(t *testing.T) {
 		result := sliceutil.FlatMap([]int{1, 2, 3}, func(v int) []string { return nil })
 		assert.Equal(t, []string{}, result)
 	})
-}
-
-func TestIndexOf(t *testing.T) {
-	assert.Equal(t, 1, sliceutil.IndexOf([]string{"a", "b", "c"}, "b"))
-	assert.Equal(t, -1, sliceutil.IndexOf([]string{"a", "b", "c"}, "x"))
-	assert.Equal(t, 0, sliceutil.IndexOf([]int{1, 2, 3}, 1))
-	assert.Equal(t, -1, sliceutil.IndexOf([]int{}, 1))
 }
 
 func TestLast(t *testing.T) {
@@ -347,13 +244,6 @@ func TestCompact(t *testing.T) {
 }
 
 // Example uses for godoc
-func ExampleChunk() {
-	nums := []int{1, 2, 3, 4, 5}
-	chunks := sliceutil.Chunk(nums, 2)
-	fmt.Println(chunks)
-	// Output: [[1 2] [3 4] [5]]
-}
-
 func ExampleMap() {
 	nums := []int{1, 2, 3}
 	strs := sliceutil.Map(nums, func(v int) string {

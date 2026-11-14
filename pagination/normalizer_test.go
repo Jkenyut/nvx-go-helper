@@ -11,7 +11,7 @@ import (
 
 func newTestDetector() *TypeDetector {
 	return NewTypeDetector().
-		WithColumnOverride("custom_code", TypeInteger).
+		WithOverride("custom_code", TypeInteger).
 		WithBooleanSuffixes("is_active", "flag").
 		WithFloatSuffixes("price", "discount_rate", "latitude", "markup").
 		WithIntegerSuffixes("version", "rate_limit_rpm").

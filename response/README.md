@@ -21,7 +21,7 @@ flowchart TD
     SonicEncode --> EncodeCheck{"JSON Serialization Succeeded?"}
 
     EncodeCheck -- Yes --> SetHeaders["Set Content-Type: application/json and HTTP Status"]
-    SetHeaders --> WriteHTTP["Write Serialized Buffer to http.ResponseWriter"]
+    SetHeaders --> WriteJSON["Write Serialized Buffer to http.ResponseWriter"]
 
     EncodeCheck -- No --> FallbackErr["Set 500 Status and Write Clean Fallback JSON"]
 ```
@@ -44,10 +44,10 @@ flowchart TD
 import "github.com/Jkenyut/nvx-go-helper/response"
 
 // 200 OK:
-response.OK(ctx, "user profile retrieved", userProfile).WriteHTTP(w)
+response.WriteJSONResponse(w, response.OK(ctx, "user profile retrieved", userProfile))
 
 // 201 Created:
-response.Created(ctx, "order placed successfully", createdOrder).WriteHTTP(w)
+response.WriteJSONResponse(w, response.Created(ctx, "order placed successfully", createdOrder))
 ```
 
 **JSON Output Format:**
@@ -70,11 +70,11 @@ response.Created(ctx, "order placed successfully", createdOrder).WriteHTTP(w)
 
 ```go
 // 400 Bad Request
-response.BadRequest(ctx, "invalid transaction payload", nil).WriteHTTP(w)
+response.WriteJSONResponse(w, response.BadRequest(ctx, "invalid transaction payload"))
 
 // 422 Unprocessable Entity
-response.UnprocessableEntity(ctx, "validation failed", validationErrorsMap).WriteHTTP(w)
+response.WriteJSONResponse(w, response.UnprocessableEntity(ctx, "validation failed"))
 
 // 500 Internal Server Error
-response.InternalServerError(ctx, "failed to process transaction", nil).WriteHTTP(w)
+response.WriteJSONResponse(w, response.InternalError(ctx))
 ```

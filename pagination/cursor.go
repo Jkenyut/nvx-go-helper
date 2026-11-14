@@ -3,10 +3,10 @@ package pagination
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/Jkenyut/nvx-go-helper/sliceutil"
 	"github.com/bytedance/sonic"
 )
 
@@ -143,7 +143,9 @@ func parseDelimitedTokens(s string) []string {
 }
 
 // parseInferredValue converts a string token into an appropriate scalar Go value.
-// It infers numbers as float64 (matching standard json unmarshal behavior).
+// Leading-zero numeric strings (e.g. "00123") are preserved as strings, integers within
+// float64 exact precision are returned as float64 for backward compatibility, and large
+// 64-bit integers outside +/-(2^53-1) are preserved as int64.
 func parseInferredValue(token string) any {
 	// 1. Boolean check
 	if strings.EqualFold(token, "true") {
@@ -153,12 +155,28 @@ func parseInferredValue(token string) any {
 		return false
 	}
 
-	// 2. Number check (integer or float) -> parse as float64
+	// 2. Preserve leading-zero numeric tokens as string (e.g. "00123")
+	if len(token) > 1 && token[0] == '0' && token[1] >= '0' && token[1] <= '9' {
+		return token
+	}
+
+	// 3. Exact 64-bit integer check before float64 fallback
+	if !strings.ContainsAny(token, ".eE") {
+		if i, err := strconv.ParseInt(token, 10, 64); err == nil {
+			const maxSafeFloatInt = int64(1<<53 - 1)
+			if i >= -maxSafeFloatInt && i <= maxSafeFloatInt {
+				return float64(i)
+			}
+			return i
+		}
+	}
+
+	// 4. Number check (float) -> parse as float64
 	if num, err := strconv.ParseFloat(token, 64); err == nil {
 		return num
 	}
 
-	// 3. String literal
+	// 5. String literal
 	return token
 }
 
@@ -265,7 +283,7 @@ func GenerateBidirectionalCursor[T any](items []T, limit int, direction, current
 		}
 
 		if dir == "next" {
-			hasNext = limit > 0 && len(items) == limit
+			hasNext = limit > 0 && len(items) >= limit
 		} else {
 			hasNext = true
 		}
@@ -439,21 +457,25 @@ func (q KeysetQuery) HasWhere() bool {
 	return q.Where != ""
 }
 
-// BuildKeysetQueryFromValues builds a complete KeysetQuery from explicit sort parameters and already-decoded cursor values.
-func BuildKeysetQueryFromValues(sortBy, sortType, direction string, cursorValues []any, cfg KeysetConfig) KeysetQuery {
+func buildKeysetQuery(sortBy, sortType, direction string, cursorVals []any, cfg KeysetConfig, strictNorm bool) (KeysetQuery, error) {
 	cols, ops, orders := prepareDynamicSort(sortBy, sortType, direction, cfg)
 
 	var sqlWhere string
 	var sqlArgs []any
-	if len(cursorValues) > 0 {
-		vals := cursorValues
+	if len(cursorVals) > 0 {
+		vals := cursorVals
 		if cfg.AutoDetectTypes || cfg.Detector != nil {
 			d := DefaultDetector
 			if cfg.Detector != nil {
 				d = cfg.Detector
 			}
-			if normalized, err := d.NormalizeCursorValues(cols, cursorValues); err == nil {
-				vals = normalized
+			normVals, err := d.NormalizeCursorValues(cols, cursorVals)
+			if err != nil {
+				if strictNorm {
+					return KeysetQuery{}, fmt.Errorf("normalizing cursor values: %w", err)
+				}
+			} else {
+				vals = normVals
 			}
 		}
 		sqlWhere, sqlArgs = BuildDynamicKeyset(cols, ops, vals)
@@ -465,7 +487,13 @@ func BuildKeysetQueryFromValues(sortBy, sortType, direction string, cursorValues
 		OrderStrs: orders,
 		Columns:   cols,
 		Operators: ops,
-	}
+	}, nil
+}
+
+// BuildKeysetQueryFromValues builds a complete KeysetQuery from explicit sort parameters and already-decoded cursor values.
+func BuildKeysetQueryFromValues(sortBy, sortType, direction string, cursorValues []any, cfg KeysetConfig) KeysetQuery {
+	q, _ := buildKeysetQuery(sortBy, sortType, direction, cursorValues, cfg, false)
+	return q
 }
 
 // BuildKeysetQuery generates a complete KeysetQuery directly from a DynamicCursorRequest and KeysetConfig.
@@ -480,33 +508,7 @@ func BuildKeysetQuery(req DynamicCursorRequest, cfg KeysetConfig) (KeysetQuery, 
 		cursorVals = vals
 	}
 
-	cols, ops, orders := prepareDynamicSort(req.SortBy, req.SortType, req.Direction, cfg)
-
-	var sqlWhere string
-	var sqlArgs []any
-	if len(cursorVals) > 0 {
-		vals := cursorVals
-		if cfg.AutoDetectTypes || cfg.Detector != nil {
-			d := DefaultDetector
-			if cfg.Detector != nil {
-				d = cfg.Detector
-			}
-			normVals, err := d.NormalizeCursorValues(cols, cursorVals)
-			if err != nil {
-				return KeysetQuery{}, fmt.Errorf("normalizing cursor values: %w", err)
-			}
-			vals = normVals
-		}
-		sqlWhere, sqlArgs = BuildDynamicKeyset(cols, ops, vals)
-	}
-
-	return KeysetQuery{
-		Where:     sqlWhere,
-		Args:      sqlArgs,
-		OrderStrs: orders,
-		Columns:   cols,
-		Operators: ops,
-	}, nil
+	return buildKeysetQuery(req.SortBy, req.SortType, req.Direction, cursorVals, cfg, true)
 }
 
 // BuildKeysetQuery builds a KeysetQuery directly on DynamicCursorRequest.
@@ -518,7 +520,8 @@ func (r DynamicCursorRequest) BuildKeysetQuery(cfg KeysetConfig) (KeysetQuery, e
 // It returns the correctly-ordered items slice and the pagination metadata.
 func FinalizeCursor[T any](items []T, req DynamicCursorRequest, extractFn func(T) []any) ([]T, *CursorPagination) {
 	if req.GetDirection() == "prev" {
-		items = sliceutil.Reverse(items)
+		items = slices.Clone(items)
+		slices.Reverse(items)
 	}
 	meta := GenerateBidirectionalCursor(items, req.Limit, req.Direction, req.Cursor, extractFn)
 	return items, meta

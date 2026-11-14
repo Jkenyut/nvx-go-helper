@@ -4,38 +4,6 @@
 // Zero external dependencies.
 package sliceutil
 
-import (
-	"slices"
-
-	"github.com/Jkenyut/nvx-go-helper/maputil"
-)
-
-// Chunk splits a single slice into multiple smaller slices, each of a specified maximum size.
-// If the input slice is empty, it returns an empty slice of slices.
-// If size is <= 0, it panics as a zero or negative chunk size is invalid.
-//
-// Example:
-//
-//	Chunk([]int{1, 2, 3, 4, 5}, 2) // returns [][]int{{1, 2}, {3, 4}, {5}}
-func Chunk[T any](slice []T, size int) [][]T {
-	if size <= 0 {
-		panic("sliceutil: chunk size must be greater than 0")
-	}
-
-	if len(slice) == 0 {
-		return [][]T{}
-	}
-
-	// Pre-calculate the exact capacity needed to avoid slice re-allocations
-	capacity := (len(slice) + size - 1) / size
-	chunks := make([][]T, 0, capacity)
-	for i := 0; i < len(slice); i += size {
-		end := min(i+size, len(slice))
-		chunks = append(chunks, slice[i:end])
-	}
-	return chunks
-}
-
 // Map transforms a slice of type T into a slice of type U by applying the provided
 // function f to each element.
 // If the input slice is nil or empty, it returns an empty slice of type U.
@@ -104,11 +72,6 @@ func Unique[T comparable](slice []T) []T {
 		}
 	}
 	return result
-}
-
-// Contains returns true if the specified element exists in the slice.
-func Contains[T comparable](slice []T, elem T) bool {
-	return slices.Contains(slice, elem)
 }
 
 // Find returns the first element that satisfies the condition f, and true.
@@ -199,21 +162,6 @@ func Difference[T comparable](a, b []T) []T {
 	return result
 }
 
-// Reverse reverses the elements of the slice in place.
-// Example:
-//
-//	Reverse([]int{1, 2, 3}) // returns []int{3, 2, 1}, original unchanged
-func Reverse[T any](slice []T) []T {
-	if len(slice) == 0 {
-		return []T{}
-	}
-	result := make([]T, len(slice))
-	for i, j := 0, len(slice)-1; j >= 0; i, j = i+1, j-1 {
-		result[i] = slice[j]
-	}
-	return result
-}
-
 // Flatten converts a two-dimensional slice (slice of slices) into a single one-dimensional slice.
 func Flatten[T any](slices [][]T) []T {
 	if len(slices) == 0 {
@@ -230,30 +178,6 @@ func Flatten[T any](slices [][]T) []T {
 		result = append(result, slices[i]...)
 	}
 	return result
-}
-
-// MapKeys returns a slice containing all the keys from a map.
-// The order of the keys is not guaranteed.
-func MapKeys[K comparable, V any](m map[K]V) []K {
-	return maputil.Keys(m)
-}
-
-// MapValues returns a slice containing all the values from a map.
-// The order of the values is not guaranteed.
-func MapValues[K comparable, V any](m map[K]V) []V {
-	return maputil.Values(m)
-}
-
-// MapMerge merges multiple maps into a new map.
-// If there are duplicate keys, the value from the map provided later in the arguments will overwrite earlier ones.
-func MapMerge[K comparable, V any](maps ...map[K]V) map[K]V {
-	return maputil.Merge(maps...)
-}
-
-// MergeSlices merges multiple slices into a new slice.
-// The order of the elements will be preserved from the order of the input slices.
-func MergeSlices[T any](slices ...[]T) []T {
-	return Flatten(slices)
 }
 
 // Reduce reduces a slice to a single value by applying the given function
@@ -287,16 +211,6 @@ func FlatMap[T, U any](slice []T, fn func(T) []U) []U {
 		return []U{}
 	}
 	return result
-}
-
-// IndexOf returns the index of the first occurrence of elem in the slice, or -1 if not found.
-//
-// Example:
-//
-//	IndexOf([]string{"a", "b", "c"}, "b") // 1
-//	IndexOf([]string{"a", "b", "c"}, "x") // -1
-func IndexOf[T comparable](slice []T, elem T) int {
-	return slices.Index(slice, elem)
 }
 
 // Last returns the last element of the slice and true, or zero value and false if the slice is empty.

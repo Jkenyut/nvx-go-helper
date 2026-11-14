@@ -20,9 +20,9 @@ func (it item[V]) isExpired(now int64) bool {
 }
 
 type flightCall[V any] struct {
-	wg  sync.WaitGroup
-	val V
-	err error
+	done chan struct{}
+	val  V
+	err  error
 }
 
 // Option configures cache behavior.
@@ -160,22 +160,35 @@ func (c *Cache[K, V]) GetOrCompute(
 		return val, nil
 	}
 
+	var ctxDone <-chan struct{}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			var zero V
+			return zero, err
+		}
+		ctxDone = ctx.Done()
+	}
+
 	c.flightMu.Lock()
 	call, active := c.flights[key]
 	if active {
 		// An existing computation is already in flight for this key
 		c.flightMu.Unlock()
-		call.wg.Wait()
-		if call.err != nil {
+		select {
+		case <-ctxDone:
 			var zero V
-			return zero, call.err
+			return zero, ctx.Err()
+		case <-call.done:
+			if call.err != nil {
+				var zero V
+				return zero, call.err
+			}
+			return call.val, nil
 		}
-		return call.val, nil
 	}
 
 	// First caller starts the in-flight job
-	call = &flightCall[V]{}
-	call.wg.Add(1)
+	call = &flightCall[V]{done: make(chan struct{})}
 	c.flights[key] = call
 	c.flightMu.Unlock()
 
@@ -191,7 +204,7 @@ func (c *Cache[K, V]) GetOrCompute(
 		c.flightMu.Lock()
 		delete(c.flights, key)
 		c.flightMu.Unlock()
-		call.wg.Done()
+		close(call.done)
 		if panicked {
 			panic(panicVal)
 		}

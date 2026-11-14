@@ -218,6 +218,39 @@ func TestCache_Close_Idempotent(t *testing.T) {
 	assert.NoError(t, c.Close()) // Second call should not panic or error
 }
 
+func TestCache_GetOrCompute_WaiterContextCancelled(t *testing.T) {
+	c := New[string, string]()
+	defer c.Close()
+
+	leaderStarted := make(chan struct{})
+	leaderRelease := make(chan struct{})
+	leaderDone := make(chan string, 1)
+
+	go func() {
+		val, err := c.GetOrCompute(context.Background(), "slow_key", 1*time.Minute, func(ctx context.Context) (string, error) {
+			close(leaderStarted)
+			<-leaderRelease
+			return "leader_value", nil
+		})
+		require.NoError(t, err)
+		leaderDone <- val
+	}()
+
+	<-leaderStarted
+
+	waiterCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	val, err := c.GetOrCompute(waiterCtx, "slow_key", 1*time.Minute, func(ctx context.Context) (string, error) {
+		return "should_not_run", nil
+	})
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Empty(t, val)
+
+	close(leaderRelease)
+	assert.Equal(t, "leader_value", <-leaderDone)
+}
+
 func BenchmarkCache_Get(b *testing.B) {
 	c := New[string, string]()
 	defer c.Close()

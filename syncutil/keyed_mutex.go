@@ -1,3 +1,4 @@
+// Package syncutil provides high-performance synchronization primitives including reference-counted KeyedMutex.
 package syncutil
 
 import (
@@ -24,10 +25,24 @@ func NewKeyedMutex[K comparable]() *KeyedMutex[K] {
 	}
 }
 
+func (km *KeyedMutex[K]) release(key K, entry *refMutex) {
+	entry.mu.Unlock()
+
+	km.mu.Lock()
+	entry.ref--
+	if entry.ref <= 0 {
+		delete(km.locks, key)
+	}
+	km.mu.Unlock()
+}
+
 // Lock acquires the lock for key and returns an unlock function.
 // Usage: defer km.Lock(key)()
 func (km *KeyedMutex[K]) Lock(key K) func() {
 	km.mu.Lock()
+	if km.locks == nil {
+		km.locks = make(map[K]*refMutex)
+	}
 	entry, exists := km.locks[key]
 	if !exists {
 		entry = &refMutex{}
@@ -38,15 +53,11 @@ func (km *KeyedMutex[K]) Lock(key K) func() {
 
 	entry.mu.Lock()
 
+	var once sync.Once
 	return func() {
-		entry.mu.Unlock()
-
-		km.mu.Lock()
-		entry.ref--
-		if entry.ref <= 0 {
-			delete(km.locks, key)
-		}
-		km.mu.Unlock()
+		once.Do(func() {
+			km.release(key, entry)
+		})
 	}
 }
 
@@ -54,6 +65,9 @@ func (km *KeyedMutex[K]) Lock(key K) func() {
 // If successful, returns the unlock function and true; otherwise returns nil and false.
 func (km *KeyedMutex[K]) TryLock(key K) (func(), bool) {
 	km.mu.Lock()
+	if km.locks == nil {
+		km.locks = make(map[K]*refMutex)
+	}
 	entry, exists := km.locks[key]
 	if !exists {
 		entry = &refMutex{}
@@ -71,15 +85,11 @@ func (km *KeyedMutex[K]) TryLock(key K) (func(), bool) {
 	entry.ref++
 	km.mu.Unlock()
 
+	var once sync.Once
 	return func() {
-		entry.mu.Unlock()
-
-		km.mu.Lock()
-		entry.ref--
-		if entry.ref <= 0 {
-			delete(km.locks, key)
-		}
-		km.mu.Unlock()
+		once.Do(func() {
+			km.release(key, entry)
+		})
 	}, true
 }
 

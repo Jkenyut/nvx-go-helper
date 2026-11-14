@@ -1,41 +1,10 @@
 package maputil
 
 import (
-	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
-
-func TestKeys(t *testing.T) {
-	t.Run("Normal", func(t *testing.T) {
-		m := map[string]int{"a": 1, "b": 2, "c": 3}
-		keys := Keys(m)
-		sort.Strings(keys)
-		assert.Equal(t, []string{"a", "b", "c"}, keys)
-	})
-
-	t.Run("Empty", func(t *testing.T) {
-		m := map[string]int{}
-		keys := Keys(m)
-		assert.Empty(t, keys)
-	})
-}
-
-func TestValues(t *testing.T) {
-	t.Run("Normal", func(t *testing.T) {
-		m := map[string]int{"a": 1, "b": 2}
-		values := Values(m)
-		sort.Ints(values)
-		assert.Equal(t, []int{1, 2}, values)
-	})
-
-	t.Run("Empty", func(t *testing.T) {
-		m := map[string]int{}
-		values := Values(m)
-		assert.Empty(t, values)
-	})
-}
 
 func TestMerge(t *testing.T) {
 	t.Run("Two maps", func(t *testing.T) {

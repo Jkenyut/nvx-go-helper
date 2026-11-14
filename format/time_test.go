@@ -9,9 +9,7 @@ import (
 )
 
 func TestTimezoneConstants(t *testing.T) {
-	assert.Equal(t, "UTC", UTC.String())
 	assert.Equal(t, "Asia/Jakarta", WIB.String())
-	assert.Equal(t, "Asia/Jakarta", Jakarta.String())
 	assert.Equal(t, "Asia/Bangkok", Bangkok.String())
 }
 
@@ -32,13 +30,6 @@ func TestNowWIB(t *testing.T) {
 	assert.Equal(t, expectedOffset, actualOffset)
 }
 
-func TestNow(t *testing.T) {
-	t1 := NowUTC()
-	t2 := Now()
-	assert.Equal(t, "UTC", t2.Location().String())
-	assert.WithinDuration(t, t1, t2, time.Second)
-}
-
 func TestToWIB(t *testing.T) {
 	// Use a fixed time in UTC
 	utcTime := time.Date(2025, 10, 20, 8, 30, 45, 123456789, time.UTC)
@@ -55,17 +46,6 @@ func TestToWIB(t *testing.T) {
 	assert.Equal(t, 7*3600, offset) // +7 hours = 25200 seconds
 }
 
-func TestToUTC(t *testing.T) {
-	wibTime := time.Date(2025, 12, 31, 23, 59, 59, 0, WIB)
-	utcTime := ToUTC(wibTime)
-
-	assert.Equal(t, "UTC", utcTime.Location().String())
-	assert.Equal(t, 16, utcTime.Hour()) // 23 - 7 = 16
-
-	_, offset := utcTime.Zone()
-	assert.Equal(t, 0, offset) // UTC offset selalu 0
-}
-
 func TestFormatWIB(t *testing.T) {
 	utcTime := time.Date(2025, 7, 7, 0, 0, 0, 0, time.UTC)
 
@@ -75,7 +55,7 @@ func TestFormatWIB(t *testing.T) {
 	}{
 		{LayoutDateTimeSec, "2025-07-07 07:00:00"},
 		{LayoutRFC3339WIB, "2025-07-07T07:00:00+07:00"},
-		{LayoutISO, "2025-07-07T07:00:00+07:00"},
+		{time.RFC3339, "2025-07-07T07:00:00+07:00"},
 		{LayoutDate, "2025-07-07"},
 	}
 

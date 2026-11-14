@@ -14,12 +14,8 @@ flowchart TD
     CheckHandler -- Zerolog Call --> FormatEvent["Create Zerolog Event with Fields"]
     CheckHandler -- slog Call --> HandleRecord["Process Record with Slog Handler and Groups"]
 
-    FormatEvent & HandleRecord --> CheckEnv{"Environment Setting"}
-
-    CheckEnv -- Production --> DiodeBuffer["Write to Non-blocking Diode Ring Buffer"]
-    DiodeBuffer --> JSONSink["Flush JSON Lines to stdout"]
-
-    CheckEnv -- Development --> ConsoleSink["Format Colored Output to stderr"]
+    FormatEvent & HandleRecord --> DiodeBuffer["Write to Non-blocking Diode Ring Buffer"]
+    DiodeBuffer --> JSONSink["Flush Structured JSON Lines to stdout"]
 ```
 
 ### Procedural Steps (ASD-STE100)

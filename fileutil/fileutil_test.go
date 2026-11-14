@@ -35,24 +35,6 @@ func TestSanitizeFileName(t *testing.T) {
 	}
 }
 
-func TestGetMimeType(t *testing.T) {
-	// Fake JPEG header
-	jpegData := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01}
-	assert.Equal(t, "image/jpeg", GetMimeType(jpegData))
-
-	// Fake PNG header
-	pngData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
-	assert.Equal(t, "image/png", GetMimeType(pngData))
-
-	// Plain text
-	textData := []byte("hello world")
-	assert.Equal(t, "text/plain; charset=utf-8", GetMimeType(textData))
-
-	// GIF header
-	gifData := []byte("GIF89a" + string(make([]byte, 100)))
-	assert.Equal(t, "image/gif", GetMimeType(gifData))
-}
-
 func TestIsSafeImage(t *testing.T) {
 	jpegData := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01}
 	assert.True(t, IsSafeImage(jpegData))

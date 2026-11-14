@@ -4,33 +4,7 @@
 // Zero external dependencies.
 package maputil
 
-// Keys returns a slice containing all the keys from a map.
-// The order of the keys is not guaranteed.
-//
-// Example:
-//
-//	Keys(map[string]int{"a": 1, "b": 2}) // []string{"a", "b"} (order not guaranteed)
-func Keys[K comparable, V any](m map[K]V) []K {
-	keys := make([]K, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-// Values returns a slice containing all the values from a map.
-// The order of the values is not guaranteed.
-//
-// Example:
-//
-//	Values(map[string]int{"a": 1, "b": 2}) // []int{1, 2} (order not guaranteed)
-func Values[K comparable, V any](m map[K]V) []V {
-	values := make([]V, 0, len(m))
-	for _, v := range m {
-		values = append(values, v)
-	}
-	return values
-}
+import "maps"
 
 // Merge merges multiple maps into a new map.
 // If there are duplicate keys, the value from the map provided later in the arguments will overwrite earlier ones.
@@ -38,16 +12,14 @@ func Values[K comparable, V any](m map[K]V) []V {
 // Example:
 //
 //	Merge(map[string]int{"a": 1}, map[string]int{"b": 2, "a": 3}) // map[string]int{"a": 3, "b": 2}
-func Merge[K comparable, V any](maps ...map[K]V) map[K]V {
+func Merge[K comparable, V any](sources ...map[K]V) map[K]V {
 	totalLen := 0
-	for _, m := range maps {
+	for _, m := range sources {
 		totalLen += len(m)
 	}
 	result := make(map[K]V, totalLen)
-	for _, m := range maps {
-		for k, v := range m {
-			result[k] = v
-		}
+	for _, m := range sources {
+		maps.Copy(result, m)
 	}
 	return result
 }

@@ -64,7 +64,7 @@ pageData := req.Pagination(totalCount)
 
 // 3. In Response: Build generic response struct
 resp := pagination.NewListResponse(users, pageData)
-response.OK(ctx, "success", resp).WriteHTTP(w)
+response.WriteJSONResponse(w, response.OK(ctx, "success", resp))
 ```
 
 **JSON Output Format:**
@@ -115,7 +115,7 @@ extractor := pagination.NewFieldExtractor(map[string]func(u User) any{
 }, func(u User) any { return u.ID })
 
 resp := pagination.NewFinalizedCursorResponse(users, req.DynamicCursorRequest, extractor.Fn(req.SortBy))
-response.OK(ctx, "success", resp).WriteHTTP(w)
+response.WriteJSONResponse(w, response.OK(ctx, "success", resp))
 ```
 
 **JSON Output Format:**
@@ -148,13 +148,13 @@ if req.IsCursor {
 		Detector:       pagination.NewTypeDetector().WithIntegerSuffixes("id"),
 	})
 	resp := pagination.NewUnifiedFinalizedCursorResponse(users, req, extractor.Fn(req.GetSortBy()))
-	response.OK(ctx, "success", resp).WriteHTTP(w)
+	response.WriteJSONResponse(w, response.OK(ctx, "success", resp))
 } else {
 	// Offset processing branch
 	totalCount := 150
 	pageData := req.Pagination(totalCount)
 	resp := pagination.NewUnifiedOffsetResponse(users, pageData)
-	response.OK(ctx, "success", resp).WriteHTTP(w)
+	response.WriteJSONResponse(w, response.OK(ctx, "success", resp))
 }
 ```
 

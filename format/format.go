@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -460,13 +461,24 @@ var DefaultMaskKeywords = []string{
 	"encrypted_data",
 }
 
-var maskRegexCache sync.Map
+const maxMaskRegexCacheSize = 256
+
+var (
+	maskRegexCache     sync.Map
+	maskRegexCacheSize atomic.Int64
+)
+
+func writeRepeat(b *strings.Builder, s string, count int) {
+	for range count {
+		b.WriteString(s)
+	}
+}
 
 // MaskAfterKeywords masks values that appear immediately after specific keywords.
 // It is safe for Plain Text, JSON, and template formats (preserves surrounding quotes).
 // Supports double-quoted, single-quoted, backtick-quoted, and unquoted values.
 // Handles escaped quotes inside quoted strings (e.g. `\"`).
-// Uses sync.Map to cache compiled regex for high-performance logging.
+// Uses a bounded sync.Map cache of compiled regexes for high-performance logging.
 //
 // Example:
 //
@@ -485,7 +497,7 @@ func MaskAfterKeywords(text string, keywords []string, maskChar string) string {
 	if cached, ok := maskRegexCache.Load(cacheKey); ok {
 		re = cached.(*regexp.Regexp)
 	} else {
-		var escaped []string
+		escaped := make([]string, 0, len(keywords))
 		for _, k := range keywords {
 			escaped = append(escaped, regexp.QuoteMeta(k))
 		}
@@ -499,34 +511,57 @@ func MaskAfterKeywords(text string, keywords []string, maskChar string) string {
 		// Unquoted exclusion includes & to correctly split key=val&key=val pairs.
 		pattern := fmt.Sprintf(`(?i)(["'`+"`"+`]?\b(?:%s)\b["'`+"`"+`]?)([\s=:]+)(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`+"`"+`([^`+"`"+`]*)`+"`"+`|([^\s,;{}&]+))`, strings.Join(escaped, "|"))
 		re = regexp.MustCompile(pattern)
-		maskRegexCache.Store(cacheKey, re)
+		if maskRegexCacheSize.Load() < maxMaskRegexCacheSize {
+			if actual, loaded := maskRegexCache.LoadOrStore(cacheKey, re); loaded {
+				re = actual.(*regexp.Regexp)
+			} else {
+				maskRegexCacheSize.Add(1)
+			}
+		}
 	}
 
-	return re.ReplaceAllStringFunc(text, func(match string) string {
-		idx := re.FindStringSubmatchIndex(match)
+	matches := re.FindAllStringSubmatchIndex(text, -1)
+	if len(matches) == 0 {
+		return text
+	}
+
+	var b strings.Builder
+	b.Grow(len(text))
+	lastEnd := 0
+
+	for _, idx := range matches {
+		b.WriteString(text[lastEnd:idx[0]])
 		if len(idx) < 14 {
-			return match
+			b.WriteString(text[idx[0]:idx[1]])
+			lastEnd = idx[1]
+			continue
 		}
 
-		kw := match[idx[2]:idx[3]]  // Keyword
-		sep := match[idx[4]:idx[5]] // Separator
+		b.WriteString(text[idx[2]:idx[3]]) // Keyword
+		b.WriteString(text[idx[4]:idx[5]]) // Separator
 
 		// Use submatch indices to detect which value group matched and slice directly
 		switch {
 		case idx[6] >= 0: // Double-quoted (JSON / standard string) — group 3
-			valLen := idx[7] - idx[6]
-			return kw + sep + `"` + strings.Repeat(maskChar, valLen) + `"`
+			b.WriteByte('"')
+			writeRepeat(&b, maskChar, idx[7]-idx[6])
+			b.WriteByte('"')
 		case idx[8] >= 0: // Single-quoted — group 4
-			valLen := idx[9] - idx[8]
-			return kw + sep + `'` + strings.Repeat(maskChar, valLen) + `'`
+			b.WriteByte('\'')
+			writeRepeat(&b, maskChar, idx[9]-idx[8])
+			b.WriteByte('\'')
 		case idx[10] >= 0: // Backtick-quoted — group 5
-			valLen := idx[11] - idx[10]
-			return kw + sep + "`" + strings.Repeat(maskChar, valLen) + "`"
+			b.WriteByte('`')
+			writeRepeat(&b, maskChar, idx[11]-idx[10])
+			b.WriteByte('`')
 		case idx[12] >= 0: // Unquoted (plain text, JSON number/boolean, etc) — group 6
-			valLen := idx[13] - idx[12]
-			return kw + sep + strings.Repeat(maskChar, valLen)
+			writeRepeat(&b, maskChar, idx[13]-idx[12])
 		default:
-			return match
+			b.WriteString(text[idx[0]:idx[1]])
 		}
-	})
+		lastEnd = idx[1]
+	}
+
+	b.WriteString(text[lastEnd:])
+	return b.String()
 }

@@ -26,7 +26,6 @@ package response
 import (
 	"context"
 	"io"
-	"net/http"
 
 	"github.com/bytedance/sonic"
 
@@ -296,11 +295,6 @@ func NetworkAuthenticationRequired(ctx context.Context, message string) Response
 
 // === HELPERS ===
 
-// Success is a shortcut for OK(ctx, "success", data).
-func Success(ctx context.Context, data any) Response {
-	return OK(ctx, "success", data)
-}
-
 // WithMessage sends a response with a custom message and status code (no data).
 func WithMessage(ctx context.Context, message string, status int) Response {
 	// Determine success based on status code range
@@ -315,57 +309,36 @@ func WithMessageData(ctx context.Context, message string, status int, data any) 
 	return Response{Meta: NewMeta(ctx, success, message, status), Data: data}
 }
 
-// JSONMarshal marshals the Response to JSON bytes.
-func (r Response) JSONMarshal() []byte {
-	if r.Meta.StatusCode == 0 {
-		r.Meta.StatusCode = 200
-	}
-
-	resp, err := sonic.Marshal(r)
-	if err != nil {
-		// Fallback for panic prevention: if the user provided an unmarshalable Data type (like func or chan),
-		// we return a standard internal server error JSON format directly to prevent crashing or returning nil.
-		fallback := Response{
-			Meta: Meta{
-				Success:    false,
-				Message:    "internal server error: failed to marshal response data",
-				StatusCode: 500,
-				RequestID:  r.Meta.RequestID, // Preserve the request ID for tracing
-			},
-			Data: nil,
-		}
-		fallbackResp, _ := sonic.Marshal(fallback)
-		return fallbackResp
-	}
-	return resp
-}
-
-// JSONEncoder writes the JSON encoding of Response to the stream safely without partial write corruption.
-func (r Response) JSONEncoder(w io.Writer) {
+func (r Response) marshalWithFallback(errMsg string) []byte {
 	if r.Meta.StatusCode == 0 {
 		r.Meta.StatusCode = 200
 	}
 
 	b, err := sonic.Marshal(r)
 	if err != nil {
+		// Fallback for panic prevention: if the user provided an unmarshalable Data type (like func or chan),
+		// we return a standard internal server error JSON format directly to prevent crashing or returning nil.
 		fallback := Response{
 			Meta: Meta{
 				Success:    false,
-				Message:    "internal server error: failed to encode response data",
+				Message:    errMsg,
 				StatusCode: 500,
-				RequestID:  r.Meta.RequestID,
+				RequestID:  r.Meta.RequestID, // Preserve the request ID for tracing
 			},
 			Data: nil,
 		}
 		fallbackBytes, _ := sonic.Marshal(fallback)
-		_, _ = w.Write(fallbackBytes)
-		return
+		return fallbackBytes
 	}
-	_, _ = w.Write(b)
+	return b
 }
 
-// WriteHTTP writes the Content-Type: application/json header, writes the HTTP status code,
-// and streams the JSON encoded Response to the http.ResponseWriter.
-func (r Response) WriteHTTP(w http.ResponseWriter) {
-	WriteJSONResponse(w, r)
+// JSONMarshal marshals the Response to JSON bytes.
+func (r Response) JSONMarshal() []byte {
+	return r.marshalWithFallback("internal server error: failed to marshal response data")
+}
+
+// JSONEncoder writes the JSON encoding of Response to the stream safely without partial write corruption.
+func (r Response) JSONEncoder(w io.Writer) {
+	_, _ = w.Write(r.marshalWithFallback("internal server error: failed to encode response data"))
 }

@@ -62,11 +62,6 @@ func TestGetPathHelpers(t *testing.T) {
 	testUUID := "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
 	req.SetPathValue("uuid", testUUID)
 
-	// GetPathValue
-	assert.Equal(t, "app_123", GetPathValue(req, "id"))
-	assert.Equal(t, "app_123", GetPathValue(req, "{id}")) // test bracket trimming
-	assert.Equal(t, "", GetPathValue(req, "nonexistent"))
-
 	// GetPathString
 	assert.Equal(t, "app_123", GetPathString(req, "id"))
 	assert.Equal(t, "app_123", GetPathString(req, "{id}", "fallback"))
@@ -104,7 +99,6 @@ func TestGetPathHelpers(t *testing.T) {
 	assert.Error(t, err)
 
 	// Nil request safety
-	assert.Equal(t, "", GetPathValue(nil, "id"))
 	assert.Equal(t, "default", GetPathString(nil, "id", "default"))
 	assert.Equal(t, 0, GetPathInt(nil, "id"))
 	assert.Equal(t, int64(0), GetPathInt64(nil, "id"))
@@ -226,20 +220,6 @@ func TestGetHeader(t *testing.T) {
 	assert.Empty(t, valNil)
 }
 
-func TestGetBasicAuthUsernamePassword(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-	req.SetBasicAuth("admin", "secret123")
-
-	user, pass, ok := GetBasicAuthUsernamePassword(req)
-	assert.True(t, ok)
-	assert.Equal(t, "admin", user)
-	assert.Equal(t, "secret123", pass)
-
-	reqEmpty := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-	_, _, ok = GetBasicAuthUsernamePassword(reqEmpty)
-	assert.False(t, ok)
-}
-
 func TestGetClientIP_EdgeCases(t *testing.T) {
 	// True-Client-IP header
 	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -274,6 +254,17 @@ func TestGetClientIP_TrustedProxies(t *testing.T) {
 	reqTrusted.RemoteAddr = "10.0.0.1:54321"
 	reqTrusted.Header.Set("X-Forwarded-For", "203.0.113.55, 10.0.0.1")
 	assert.Equal(t, "203.0.113.55", GetClientIP(reqTrusted, "127.0.0.1", "10.0.0.1"))
+
+	// RemoteAddr matches trusted CIDR range
+	reqCIDR := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	reqCIDR.RemoteAddr = "10.20.30.40:54321"
+	reqCIDR.Header.Set("X-Forwarded-For", "203.0.113.77, 10.20.30.40")
+	assert.Equal(t, "203.0.113.77", GetClientIP(reqCIDR, "10.0.0.0/8"))
+
+	// Nil request safety checks
+	assert.Empty(t, GetClientIP(nil))
+	assert.Empty(t, GetBearerToken(nil))
+	assert.Empty(t, GetQueryMapSlice(nil, "group", ":"))
 }
 
 func TestGetQueryString_DoesNotDrainBody(t *testing.T) {

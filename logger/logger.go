@@ -1,12 +1,13 @@
 // Package logger provides a centralized, configuration-driven structured logging
 // setup using zerolog and high-performance diode ring-buffer for microservices.
-// It automatically adapts to the runtime environment:
+// All environments emit structured JSON lines to stdout (ideal for Loki, ELK,
+// CloudWatch, Datadog, and container runtimes), while adapting runtime defaults:
 //
-//   - production/prod  → JSON output to stdout (ideal for Loki, ELK, CloudWatch)
-//   - development/staging/other → Pretty colored console output to stderr
+//   - production/prod           → info level, 10000 buffer size
+//   - development/staging/other → debug level, 1000 buffer size, caller enabled
 //
 // Features:
-//   - Environment-aware output format
+//   - Consistent JSON output across all environments (12-Factor App)
 //   - Automatic service name, environment, and port inclusion
 //   - LOG_LEVEL environment variable override
 //   - OpenTelemetry trace_id and span_id context propagation
@@ -24,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Jkenyut/nvx-go-helper/activity"
@@ -36,6 +38,7 @@ import (
 var (
 	closerMu          sync.Mutex
 	globalDiodeCloser io.Closer
+	globalLogger      atomic.Pointer[zerolog.Logger]
 	initOnce          sync.Once
 )
 
@@ -175,7 +178,7 @@ func (h ActivityHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
 }
 
 // Init initializes the global zerolog logger using functional options.
-// If called without options, it defaults to development mode with console output to stderr.
+// If called without options, it defaults to development mode with JSON output to stdout.
 func Init(opts ...Option) {
 	o := options{
 		serviceName: "unknown-service",
@@ -198,29 +201,21 @@ func Init(opts ...Option) {
 
 	writer := o.writer
 	if writer == nil {
-		if isProd {
-			writer = io.MultiWriter(os.Stdout)
-		} else {
-			writer = zerolog.ConsoleWriter{
-				Out:     os.Stderr,
-				NoColor: false,
-				FormatFieldValue: func(i any) string {
-					switch v := i.(type) {
-					case []byte:
-						return string(v)
-					case json.RawMessage:
-						return string(v)
-					case map[string]any, []any, map[string]string:
-						if b, err := sonic.Marshal(v); err == nil {
-							return string(b)
-						}
-					}
-					return fmt.Sprintf("%v", i)
-				},
-			}
+		writer = os.Stdout
+	}
+
+	if sizeStr := os.Getenv("LOG_BUFFER_SIZE"); sizeStr != "" {
+		if s, err := strconv.Atoi(sizeStr); err == nil && s > 0 {
+			o.bufferSize = s
 		}
 	}
 
+	wr := diode.NewWriter(writer, o.bufferSize, 10*time.Millisecond, func(missed int) {
+		_, _ = fmt.Fprintf(os.Stderr, "[logger] warning: diode dropped %d log messages\n", missed)
+	})
+
+	closerMu.Lock()
+	zerolog.InterfaceMarshalFunc = sonic.Marshal
 	zerolog.TimeFieldFormat = time.RFC3339
 
 	// 1. Check custom level option first
@@ -242,28 +237,11 @@ func Init(opts ...Option) {
 		}
 	}
 
-	if sizeStr := os.Getenv("LOG_BUFFER_SIZE"); sizeStr != "" {
-		if s, err := strconv.Atoi(sizeStr); err == nil && s > 0 {
-			o.bufferSize = s
-		}
-	}
-
-	wr := diode.NewWriter(writer, o.bufferSize, 10*time.Millisecond, func(missed int) {
-		_, _ = fmt.Fprintf(os.Stderr, "[logger] warning: diode dropped %d log messages\n", missed)
-	})
-
-	closerMu.Lock()
-	if globalDiodeCloser != nil {
-		_ = globalDiodeCloser.Close()
-	}
-	globalDiodeCloser = wr
-	closerMu.Unlock()
-
 	logContext := zerolog.New(wr).
 		With().
 		Timestamp().
 		Str("service", o.serviceName).
-		Str("env", o.env)
+		Str("env", cleanEnv)
 
 	if o.port > 0 {
 		logContext = logContext.Int("port", o.port)
@@ -274,7 +252,16 @@ func Init(opts ...Option) {
 	}
 
 	log := logContext.Logger().Hook(ActivityHook{})
+	globalLogger.Store(&log)
 	zerolog.DefaultContextLogger = &log
+
+	oldCloser := globalDiodeCloser
+	globalDiodeCloser = wr
+	closerMu.Unlock()
+
+	if oldCloser != nil {
+		_ = oldCloser.Close()
+	}
 }
 
 // InitFromConfig initializes the global zerolog logger using values from the
@@ -311,12 +298,19 @@ func Close() error {
 
 // L returns the global zerolog logger instance.
 func L() *zerolog.Logger {
+	if l := globalLogger.Load(); l != nil {
+		return l
+	}
 	initOnce.Do(func() {
-		if zerolog.DefaultContextLogger == nil {
+		if globalLogger.Load() == nil {
 			InitFromConfig(Config{})
 		}
 	})
-	return zerolog.DefaultContextLogger
+	if l := globalLogger.Load(); l != nil {
+		return l
+	}
+	InitFromConfig(Config{})
+	return globalLogger.Load()
 }
 
 // Ctx returns a logger instance bound to the provided context.
@@ -341,23 +335,30 @@ func SlogWithContext(ctx context.Context) *slog.Logger {
 	return slog.New(&zerologSlogHandler{logger: Ctx(ctx)})
 }
 
+func withCtx(e *zerolog.Event, ctx context.Context) *zerolog.Event {
+	if e == nil || ctx == nil {
+		return e
+	}
+	return e.Ctx(ctx)
+}
+
 // Debug returns a zerolog.Event for debug-level logging with context.
-func Debug(ctx context.Context) *zerolog.Event { return Ctx(ctx).Debug() }
+func Debug(ctx context.Context) *zerolog.Event { return withCtx(L().Debug(), ctx) }
 
 // Info returns a zerolog.Event for info-level logging with context.
-func Info(ctx context.Context) *zerolog.Event { return Ctx(ctx).Info() }
+func Info(ctx context.Context) *zerolog.Event { return withCtx(L().Info(), ctx) }
 
 // Warn returns a zerolog.Event for warning-level logging with context.
-func Warn(ctx context.Context) *zerolog.Event { return Ctx(ctx).Warn() }
+func Warn(ctx context.Context) *zerolog.Event { return withCtx(L().Warn(), ctx) }
 
 // Error returns a zerolog.Event for error-level logging with context.
-func Error(ctx context.Context) *zerolog.Event { return Ctx(ctx).Error() }
+func Error(ctx context.Context) *zerolog.Event { return withCtx(L().Error(), ctx) }
 
 // Fatal returns a zerolog.Event for fatal-level logging with context.
-func Fatal(ctx context.Context) *zerolog.Event { return Ctx(ctx).Fatal() }
+func Fatal(ctx context.Context) *zerolog.Event { return withCtx(L().Fatal(), ctx) }
 
 // Panic returns a zerolog.Event for panic-level logging with context.
-func Panic(ctx context.Context) *zerolog.Event { return Ctx(ctx).Panic() }
+func Panic(ctx context.Context) *zerolog.Event { return withCtx(L().Panic(), ctx) }
 
 // zerologSlogHandler adapts zerolog to slog.Handler
 type zerologSlogHandler struct {
@@ -407,7 +408,7 @@ func (h *zerologSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	r.Attrs(func(a slog.Attr) bool {
-		val := a.Value.Any()
+		val := a.Value.Resolve().Any()
 		key := h.resolveKey(a.Key)
 		switch v := val.(type) {
 		case error:
@@ -433,7 +434,22 @@ func (h *zerologSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 func (h *zerologSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	sub := h.logger.With()
 	for _, a := range attrs {
-		sub = sub.Any(h.resolveKey(a.Key), a.Value.Any())
+		val := a.Value.Resolve().Any()
+		key := h.resolveKey(a.Key)
+		switch v := val.(type) {
+		case error:
+			sub = sub.AnErr(key, v)
+		case json.RawMessage:
+			sub = sub.RawJSON(key, v)
+		case []byte:
+			if sonic.Valid(v) {
+				sub = sub.RawJSON(key, v)
+			} else {
+				sub = sub.Bytes(key, v)
+			}
+		default:
+			sub = sub.Any(key, val)
+		}
 	}
 	l := sub.Logger()
 	return &zerologSlogHandler{logger: &l, groups: h.groups}

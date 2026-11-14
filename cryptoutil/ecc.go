@@ -60,6 +60,9 @@ func EncryptECC(recipientPubKey *ecdsa.PublicKey, data []byte) ([]byte, error) {
 	if recipientPubKey == nil {
 		return nil, errors.New("recipient public key cannot be nil")
 	}
+	if recipientPubKey.Curve != elliptic.P256() {
+		return nil, errors.New("unsupported curve: EncryptECC requires P-256")
+	}
 
 	// 1. Convert ECDSA public key to ECDH public key
 	ecdhRecipientPub, err := recipientPubKey.ECDH()
@@ -79,9 +82,11 @@ func EncryptECC(recipientPubKey *ecdsa.PublicKey, data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer clear(sharedSecret)
 
 	// 4. Derive AES-256 key using SHA-256
 	aesKey := sha256.Sum256(sharedSecret)
+	defer clear(aesKey[:])
 
 	// 5. Create AES-GCM cipher
 	block, err := aes.NewCipher(aesKey[:])
@@ -114,6 +119,9 @@ func DecryptECC(privKey *ecdsa.PrivateKey, packedData []byte) ([]byte, error) {
 	if privKey == nil {
 		return nil, errors.New("private key cannot be nil")
 	}
+	if privKey.Curve != elliptic.P256() {
+		return nil, errors.New("unsupported curve: DecryptECC requires P-256")
+	}
 
 	// Convert our private key to ECDH
 	ecdhPriv, err := privKey.ECDH()
@@ -144,9 +152,11 @@ func DecryptECC(privKey *ecdsa.PrivateKey, packedData []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer clear(sharedSecret)
 
 	// 3. Derive AES-256 key using SHA-256
 	aesKey := sha256.Sum256(sharedSecret)
+	defer clear(aesKey[:])
 
 	// 4. Create AES-GCM cipher
 	block, err := aes.NewCipher(aesKey[:])
